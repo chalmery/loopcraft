@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: loopcraft
+  threads:
+    virtual:
+      enabled: true
+  main:
+    keep-alive: true
+  ai:
+    model:
+      chat: "none"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info

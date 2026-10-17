@@ -5,10 +5,29 @@
 - Java 25
 - Spring Boot 4.1.1
 - Spring AI 2.0.1
-- Spring MVC；`application.properties` 已启用虚拟线程
+- Spring MVC；`application.yml` 已启用虚拟线程
 - 基础包路径：`io.github.chalmery.loopcraft`
 
-修改版本或配置前，先检查 `pom.xml` 和 `src/main/resources/application.properties` 中的实际内容。
+修改版本或配置前，先检查 `pom.xml` 和 `src/main/resources/application.yml` 中的实际内容。
+
+## Java 代码结构与风格
+
+- 按业务能力/功能分包，不要把所有 Controller、Service、Repository 分别堆进全局大包。相关代码优先放在同一能力边界内；只有跨能力复用且确实稳定的内容才上移。
+- 包名全小写，类型名用 `UpperCamelCase`，方法和字段用 `lowerCamelCase`，常量用 `UPPER_SNAKE_CASE`。一个 Java 文件只放一个主要顶层类型，类型名与文件名一致。
+- 根包统一为 `io.github.chalmery.loopcraft`。按实际功能逐步创建包，不预建空包。建议边界如下：
+  - `agent`：ReAct 执行循环、轮次/状态，以及 Agent 级编排。
+  - `mcp`：MCP 客户端与传输配置、连接生命周期、能力发现、MCP 工具适配和协议错误处理。MCP 专属实现集中在此包，不散落到通用 `tool`、`config` 或 `service` 包中。
+  - `tool`：LoopCraft 自己实现的非 MCP 工具、工具定义和执行入口。MCP 暴露的工具仍由 `mcp` 负责接入，再通过清楚的边界交给 Agent 使用。
+  - `web`：HTTP Controller、请求/响应 DTO、参数校验和 Web 层异常映射；不在 Controller 中编排 Agent 轮次或直接实现工具。
+  - `config`：Spring Bean 装配和基础设施配置；不放业务流程。
+  - `shared`：仅放确实被多个能力共同使用、且不依赖某个具体能力的少量类型。不要把它变成 `common`/`utils` 杂物包。
+- 以功能包为主；某个能力确实变复杂后，再在该能力内部拆 `api`、`application`、`domain`、`infrastructure` 等层。避免为了形式给简单功能建一整套空层。
+- 依赖方向保持清楚：Web 层调用应用能力；Agent 面向稳定的模型/工具边界；MCP 传输和协议细节封装在 `mcp` 内。避免循环依赖，不让底层适配器反向依赖 Controller。
+- 使用 4 个空格缩进，不使用 Tab；保持方法短小、单一职责，条件分支优先使用早返回减少嵌套。导入使用明确的单类型导入，避免通配符导入。
+- 默认使用构造器注入；依赖字段声明为 `final`。简单、不可变的数据载体可用 `record`；不要为少量字段创建多层无意义包装。
+- 优先使用局部不可变数据和明确类型。对外请求和配置边界做校验；不要用 `null` 表示多种业务状态，不要用宽泛 `catch (Exception)` 吞掉错误，也不要把失败伪装成成功结果。
+- 不为转发调用而新增没有业务含义的 `*Service`、`*Manager`、`*Helper` 或静态工具类。抽象应对应真实边界、复用需求或可替换实现。
+- 注释解释原因、约束和不明显的决策，不重复代码字面含义；删除过时注释，不留下未兑现的 TODO。
 
 ## 实现约定
 

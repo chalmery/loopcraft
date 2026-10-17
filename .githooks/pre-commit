@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+if ! git diff --cached --check; then
+  echo "pre-commit: fix whitespace errors in staged changes." >&2
+  exit 1
+fi
+
+staged_added_lines=$(git diff --cached --no-ext-diff --unified=0 -- | sed -n '/^+/p' | sed '/^+++/d')
+if printf '%s\n' "$staged_added_lines" | grep -Eiq 'sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----'; then
+  echo "pre-commit: possible credential found in staged additions; remove it or replace it with a placeholder." >&2
+  exit 1
+fi

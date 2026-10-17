@@ -25,3 +25,13 @@ bun run dev
 ```
 
 模型凭证、数据库、API、ReAct 循环和产品界面将在后续开发中加入。
+
+## Git 提交检查
+
+仓库包含一个轻量 `pre-commit` Hook，会检查暂存内容的空白错误和常见凭证格式。当前工作区已启用；克隆仓库后，可运行下面的命令启用：
+
+```bash
+git config core.hooksPath .githooks
+```
+
+该检查是基础防护，不替代完整的密钥扫描。

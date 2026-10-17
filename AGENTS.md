@@ -1,0 +1,35 @@
+# LoopCraft 仓库协作说明
+
+## 项目目标
+
+LoopCraft 是一个用于学习和构建云端 ReAct Agent 的项目。第一阶段聚焦文本模型 → 工具 → 观察结果这一执行循环。
+
+Agent 执行流程是本项目的主要学习目标。除非用户明确提出，不要直接用框架接管完整的 Agent 循环，也不要擅自加入 MCP、Skills、持久化、身份认证等平台功能。涉及核心循环时，先说明设计；除非用户明确要求编写实现，否则应保留由用户亲自实现的空间。
+
+## 仓库约定
+
+- 后端和前端的改动分别放在各自目录；确有共享需求时再修改仓库根目录文件。
+- 保持项目文件中声明的版本和技术选型。提出依赖或配置变更前，先检查实际项目文件。
+- 不要将凭证写入源码、日志、截图或提交记录。密钥使用环境变量或已加入忽略列表的本地配置。
+- 优先做小而明确的改动，避免隐藏模型、工具和观察结果流程的抽象。
+- 日常验证不要调用真实模型或使用真实凭证。
+- 最终回复概述改动文件，并准确说明实际执行过的检查。没有运行构建或测试时，不要声称它们通过。
+
+## Code Review Rules
+
+- 如果 Agent 循环没有迭代次数上限，或执行模型请求的工具前没有校验工具名称和参数，应指出风险。
+- 如果改动会暴露凭证，或默认记录未经处理的提示词和工具结果，应指出风险。优先使用脱敏且需主动开启的诊断日志。
+
+## Harness 源码参考
+
+本机 Harness 参考源码目录预定为仓库根目录下的 `harness-references/`。如果该目录存在，处理 Harness 架构、执行循环、工具调用、权限控制、Hook、上下文管理、子 Agent 或代码审查等设计问题时，先按当前问题查阅相关仓库和文件，再结合 LoopCraft 的目标给出方案。
+
+目录按以下仓库名组织：
+
+- `harness-references/oh-my-pi/`：`https://github.com/can1357/oh-my-pi`
+- `harness-references/opencode/`：`https://github.com/anomalyco/opencode`
+- `harness-references/deepseek-harness/`：`https://github.com/deepseek-ai/deepseek-harness`
+- `harness-references/codex/`：`https://github.com/openai/codex`
+- `harness-references/claude-code/`：`https://github.com/claude-code-best/claude-code`
+
+这些源码仅作为本地只读设计参考，不属于 LoopCraft 的实现。针对具体问题定向搜索和阅读相关文件，不要默认扫描所有仓库；总结设计思路时注明对应仓库和文件路径。不要直接大段复制参考源码，也不要修改、暂存或提交这些外部仓库的内容；如需借鉴实现，应先核对其许可证并改写为适合 LoopCraft 的方案。

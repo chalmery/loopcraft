@@ -24,7 +24,15 @@ bun install
 bun run dev
 ```
 
-模型凭证、数据库、API、ReAct 循环和产品界面将在后续开发中加入。
+默认配置不需要模型凭证。准备试用 Spring AI OpenAI ChatModel 时，先复制 `backend/.env.example` 为 `backend/.env`，填写 API Key、OpenAI 兼容的 API 根地址和模型 ID，再显式加载变量并启用 `llm` Profile。操作说明和配置边界见 [`docs/development.md`](docs/development.md)。
+
+ReAct 执行循环、工具和产品 API 尚未实现；模型配置只装配单次调用所用的 `ChatModel`，循环仍由项目代码负责。
+
+## AI 开发与检查
+
+仓库约定和本地验证命令见 [`AGENTS.md`](AGENTS.md)。第一次克隆后执行 `git config core.hooksPath .githooks` 安装快速提交检查；检查完整仓库可运行 `./scripts/check.sh all`。GitHub Actions 会在推送和 Pull Request 上执行同样的分模块检查。
+
+首次前端安装在 `frontend/` 中执行 `bun install`；后续 CI 使用 `bun install --frozen-lockfile`。
 
 ## Git 提交检查
 

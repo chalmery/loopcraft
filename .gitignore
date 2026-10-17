@@ -12,3 +12,14 @@ frontend/.vite/
 .idea/
 .vscode/
 .DS_Store
+
+# Local credentials, logs, and read-only reference checkouts
+.env
+.env.*
+!.env.example
+**/application-local.yml
+**/application-local.yaml
+**/application-local.properties
+*.log
+**/__pycache__/
+harness-references/

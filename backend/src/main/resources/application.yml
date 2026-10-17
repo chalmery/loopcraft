@@ -9,8 +9,41 @@ spring:
   ai:
     model:
       chat: "none"
+      embedding: "none"
+      image: "none"
+      moderation: "none"
+      audio:
+        speech: "none"
+        transcription: "none"
+    chat:
+      client:
+        tool-calling:
+          enabled: false
+        observations:
+          log-prompt: false
+          log-completion: false
+      observations:
+        log-prompt: false
+        log-completion: false
+        include-error-logging: false
+    tools:
+      observations:
+        include-content: false
+      resolution:
+        fallback:
+          enabled: false
+
+# Budgets for the future hand-written loop; binding alone does not enforce them.
+loopcraft:
+  agent:
+    max-iterations: ${AGENT_MAX_ITERATIONS:12}
+    run-timeout: ${AGENT_RUN_TIMEOUT:120s}
+    tool-timeout: ${AGENT_TOOL_TIMEOUT:15s}
 
 management:
+  endpoint:
+    health:
+      show-details: never
   endpoints:
     web:
       exposure:

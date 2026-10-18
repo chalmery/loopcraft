@@ -1,0 +1,9 @@
+# Fast tests must not need a database or a container runtime.
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+
+logging:
+  file:
+    name: ""

@@ -1,0 +1,13 @@
+# Only the disposable-container test launcher supplies these values.
+spring:
+  datasource:
+    url: ${TEST_DB_URL}
+    username: ${TEST_DB_USER}
+    password: ${TEST_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 2
+      connection-timeout: 5000
+
+logging:
+  file:
+    name: ""

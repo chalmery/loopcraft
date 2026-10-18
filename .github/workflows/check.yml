@@ -49,3 +49,20 @@ jobs:
       - run: bun install --frozen-lockfile
         working-directory: frontend
       - run: ./scripts/check.sh frontend
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - run: ./scripts/check.sh integration
+        env:
+          CONTAINER_RUNTIME: docker

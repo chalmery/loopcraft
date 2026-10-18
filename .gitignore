@@ -21,5 +21,7 @@ frontend/.vite/
 **/application-local.yaml
 **/application-local.properties
 *.log
+.run/
+logs/
 **/__pycache__/
 harness-references/

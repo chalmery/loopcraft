@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+# 删除远端引用不需要构建；其他推送必须通过前端完整检查。
+check_required=false
+while read -r local_ref local_oid remote_ref remote_oid; do
+  case "$local_oid" in
+    *[!0]*) check_required=true ;;
+  esac
+done
+
+if [ "$check_required" = true ]; then
+  cd "$(git rev-parse --show-toplevel)"
+  exec ./scripts/check.sh frontend
+fi

@@ -1,8 +1,32 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
+  "plugins": ["react", "typescript", "oxc", "nextjs", "jsx-a11y"],
+  "ignorePatterns": [".next/**", "out/**", "dist/**", "next-env.d.ts"],
+  "settings": {
+    "jsx-a11y": {
+      "components": { "Input": "input", "NativeSelect": "select", "Label": "label" }
+    }
+  },
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+    "react/exhaustive-deps": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/consistent-type-imports": "error",
+    "jsx-a11y/alt-text": "error",
+    "jsx-a11y/aria-props": "error",
+    "jsx-a11y/aria-proptypes": "error",
+    "jsx-a11y/aria-role": "error",
+    "jsx-a11y/label-has-associated-control": "error",
+    "jsx-a11y/click-events-have-key-events": "error",
+    "jsx-a11y/no-static-element-interactions": "error",
+    "nextjs/no-html-link-for-pages": "error",
+    "nextjs/no-img-element": "error",
+    "react/only-export-components": ["error", { "allowConstantExport": true }]
+  },
+  "overrides": [
+    {
+      "files": ["src/app/**/page.tsx", "src/app/**/layout.tsx", "src/components/ui/*.tsx"],
+      "rules": { "react/only-export-components": "off" }
+    }
+  ]
 }

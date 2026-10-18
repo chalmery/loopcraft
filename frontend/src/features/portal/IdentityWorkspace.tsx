@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Building2, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Users } from 'lucide-react'
+import { Building2, Cpu, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { LoopCraftMark } from '@/components/layout/LoopCraftMark'
 import { Button } from '@/components/ui/button'
@@ -24,12 +24,14 @@ import { ProfileSection } from '@/features/profile/ProfileSection'
 import { AccountMenu } from '@/features/profile/AccountMenu'
 import { profileApi } from '@/features/profile/api'
 import { TenantSelection } from '@/features/workspace/TenantSelection'
+import { LlmAccess } from '@/features/llm-access/LlmAccess'
 import { WorkspaceSection } from '@/features/workspace/WorkspaceSection'
 import { workspaceApi } from '@/features/workspace/api'
 import { useWorkspaceData } from '@/features/workspace/useWorkspaceData'
 
-type Section = 'workspace' | 'profile' | 'tenants' | 'users'
+type Section = 'llm' | 'workspace' | 'profile' | 'tenants' | 'users'
 const titles: Record<Section, string> = {
+  llm: '模型接入',
   workspace: '工作区与成员',
   profile: '个人设置',
   tenants: '租户管理',
@@ -69,6 +71,7 @@ function AuthenticatedPortal({
       ? 'profile'
       : section
   const links = [
+    ...(tenant ? [{ id: 'llm' as const, label: titles.llm, icon: Cpu }] : []),
     ...(isOwner
       ? [{ id: 'workspace' as const, label: titles.workspace, icon: PanelsTopLeft }]
       : []),
@@ -102,13 +105,7 @@ function AuthenticatedPortal({
   }
   function selectTenant(id: number) {
     workspace.setTenantId(id)
-    setSection(
-      tenants.find((item) => item.id === id)?.myRole === 'OWNER'
-        ? 'workspace'
-        : user.platformAdmin
-          ? 'tenants'
-          : 'profile',
-    )
+    setSection(tenants.find((item) => item.id === id)?.myRole === 'OWNER' ? 'workspace' : 'llm')
     setScreen('settings')
     setError('')
   }
@@ -339,6 +336,13 @@ function AuthenticatedPortal({
                   }
                 }, '成员已移除')
               }
+            />
+          )}
+          {visibleSection === 'llm' && tenantId !== null && (
+            <LlmAccess
+              key={tenantId}
+              tenantId={tenantId}
+              canManage={isOwner || user.platformAdmin}
             />
           )}
           {visibleSection === 'profile' && (

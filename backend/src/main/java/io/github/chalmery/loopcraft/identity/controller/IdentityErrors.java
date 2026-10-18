@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.server.ResponseStatusException;
 
-@RestControllerAdvice(basePackageClasses = AuthController.class)
+@RestControllerAdvice(basePackageClasses = {AuthController.class, io.github.chalmery.loopcraft.llm.controller.LlmAccessController.class})
 public class IdentityErrors {
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse<Void>> unauthenticated() {
@@ -22,7 +22,7 @@ public class IdentityErrors {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> conflict() {
-        return failure(HttpStatus.CONFLICT, "账号或成员关系已存在，或关联记录不存在");
+        return failure(HttpStatus.CONFLICT, "记录名称或 ID 已存在，或存在关联业务数据；有关联时请改为停用");
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,

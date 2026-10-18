@@ -1,6 +1,6 @@
 # LoopCraft
 
-LoopCraft 是用于学习和构建云端 ReAct Agent 的全栈项目。当前提供用户、租户管理；前端支持登录、个人设置、工作区成员和平台账号管理。Agent 对话入口、ReAct 循环和会话持久化尚未接入。
+LoopCraft 是用于学习和构建云端 ReAct Agent 的全栈项目。当前提供用户、租户及供应商连接/模型管理；前端支持登录、个人设置、工作区成员、模型接入和平台账号管理。Agent 对话入口、ReAct 循环和会话持久化尚未接入。
 
 - `backend/`：Java 25、Spring Boot 4.1.1、PostgreSQL、MyBatis-Plus、Maven。基础包为 `io.github.chalmery.loopcraft`。
 - `frontend/`：Next.js App Router、React、TypeScript、Bun、Tailwind CSS 4、shadcn/ui、Lucide；运行与组件说明见 [前端 README](frontend/README.md)。
@@ -38,7 +38,7 @@ Ctrl+C / SIGTERM 停止本次启动的前后端，数据库继续运行；任一
 | 常规测试 | `test` | 不读取 `.env` | 禁用数据源自动装配 |
 | 数据库测试 | `integration` | 不读取 `.env` | 一次性 PostgreSQL |
 
-当前仅提供 `dev` 运行环境；`test` 和 `integration` 仅用于自动化测试。公共配置在 [application.yml](backend/src/main/resources/application.yml)，开发配置在 [application-dev.yml](backend/src/main/resources/application-dev.yml)。启动器只读 `env/dev/.env`，不加载 `backend/.env`；可从 [开发示例](env/dev/.env.example) 复制。进程环境变量优先，文件值按字面读取，不执行 shell 或展开 `$VAR`，含空格或 `#` 的值需加引号；真实 `.env` 已忽略提交。
+当前仅提供 `dev` 运行环境；`test` 和 `integration` 仅用于自动化测试。公共配置在 [application.yml](backend/src/main/resources/application.yml)，开发配置在 [application-dev.yml](backend/src/main/resources/application-dev.yml)。启动器只读 `env/dev/.env`，不加载 `backend/.env`；`env/` 整个目录仅保留在本地，不纳入 Git。首次使用时创建 `env/dev/.env`，填写需要覆盖的配置。进程环境变量优先，文件值按字面读取，不执行 shell 或展开 `$VAR`，含空格或 `#` 的值需加引号。
 
 本地默认数据库名 `loopcraft_local`、用户 `loopcraft`、密码 `loopcraft_local_only`，仅供本机开发。启动器按本地端口和数据库字段生成 `DB_URL`，按 `SERVER_PORT` 生成 `BACKEND_URL`。需要改端口时在本地 `.env` 设置 `DB_PORT`、`SERVER_PORT`、`FRONTEND_PORT`。
 
@@ -46,7 +46,7 @@ Ctrl+C / SIGTERM 停止本次启动的前后端，数据库继续运行；任一
 
 ## 建表与首次管理员
 
-应用不会自动建表或升级结构。先启动数据库，按 [用户与租户 SQL](backend/sql/identity/README.md) 依次执行三个建表文件。例如：
+应用不会自动建表或升级结构。先启动数据库，按 [用户与租户 SQL](backend/sql/identity/README.md) 依次执行三个建表文件，再按 [模型接入 SQL](backend/sql/llm/README.md) 执行来源、模型两个文件。例如：
 
 ```bash
 ./scripts/dev.sh db up
@@ -68,6 +68,20 @@ BOOTSTRAP_ADMIN_PASSWORD=replace-with-a-private-password
 后台配置分为「租户管理」「账号管理」两个分页 CRUD 页面，仅平台管理员可访问；支持右侧栏新增/编辑和二次确认删除，暂不提供搜索条件。平台管理员创建账号、管理租户及交接负责人；当前租户负责人通过「工作区与成员」管理成员。平台管理员账号禁止停用或删除，负责人账号需先交接，租户存在关联业务数据时禁止直接删除。API 使用 Session，写操作需要 CSRF 令牌。自行调用 API 时，先 `GET /api/auth/csrf`，从响应 `data` 读取 `headerName` 和 `token`，携带 Cookie 和该请求头登录 `POST /api/auth/login`；登录后重新获取令牌，用于后续写操作。
 
 Session 保存在单实例内存中，空闲 30 分钟过期，服务重启需重新登录；修改密码或启停账号会使旧会话失效。前端收到 401 后返回登录页；CSRF 失效返回 HTTP 403、业务码 `40301`，前端刷新令牌后仅重试一次，业务权限不足不会重试。本地 HTTP 默认关闭 Secure Cookie，可用 `SESSION_COOKIE_SECURE` 覆盖。
+
+## 模型接入
+
+进入租户后选择「模型接入」。同租户可为同一供应商建立多个连接，每个连接维护多个模型。普通成员只读，当前负责人和平台管理员可新增、编辑、启停、删除，以及查询供应商候选并勾选导入。来源名在租户内唯一，实际模型 ID 在来源内唯一且区分大小写。重复导入跳过已有记录，不覆盖名称或重新启用。
+
+首版支持 OpenAI 兼容和 Anthropic 兼容模型目录。API 根地址由用户完整填写，例如 `https://api.example.com/v1`，服务端只追加 `/models`。保存连接不调用供应商；可暂不配置 API Key，查询候选前须配置。候选查询不自动写库；请求 15 秒超时，不跟随重定向，响应上限 2 MiB，单次上游目录最多 2000 条，每页候选最多 100 条。OpenAI 列表在后端分页，Anthropic 使用 `after_id`；目录变化后可重新查询。401/403 归一化为 502 认证失败，超时 504，仅 404/405/501 视为列表不支持，可手动添加。协议依据 [OpenAI Models](https://developers.openai.com/api/reference/resources/models/methods/list) 和 [Anthropic Models](https://platform.claude.com/docs/en/api/models/list)。
+
+保存非空密钥前，在 `env/dev/.env` 配置 `LLM_ENCRYPTION_KEY`：使用 `openssl rand -base64 32` 在本地生成，将结果保存到忽略提交的配置文件。主密钥需安全备份并保持稳定，更换后旧密文无法解密；目前没有自动轮换功能。未配置时仍可查看、管理无凭证来源和手动模型，但不能保存非空密钥或解密查询。密钥以带随机 nonce 的 AES-256-GCM 加密，租户 ID 作为附加认证数据；接口只返回 `hasApiKey`，不返回密钥、尾号或密文。编辑留空保留，明确勾选才清除，同时更换和清除会拒绝。
+
+供应商查询默认只连接公网地址：在实际连接时校验全部 DNS 结果，拒绝回环、内网、链路本地和保留地址，并直接使用已校验的地址建立连接，避免二次解析绕过。域名同时解析到公网和内网时整次拒绝；不读取系统代理，不跟随重定向。地址受限时返回 502。HTTP 客户端使用 Spring Boot 管理版本的 Apache HttpClient，以支持连接时的 DNS 校验。
+
+确需访问可信内网服务时，由部署者在本地环境设置 `LLM_DISCOVERY_ALLOWED_INTERNAL_HOSTS`，以逗号分隔精确主机名或 IP，例如 `models.internal.example`；不支持通配符或子域自动放行。此配置授予该主机的内网访问能力，不能由租户接口修改。未配置时默认不放行；保存连接仍只校验字段，不发起 DNS 或供应商请求。
+
+停用连接保留各模型自身状态，仍允许维护。删除来源和模型在事务中完成；新增表会继续保护有关联数据的租户不被删除。当前没有模板表或引用计数，未来模板需通过真实关联与限制删除外键接入删除保护；未实现模板运行、参数、计费或 Agent 推理调用。
 
 ## 日志与排查
 

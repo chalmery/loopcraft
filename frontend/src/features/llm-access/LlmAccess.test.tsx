@@ -95,7 +95,11 @@ test('其他会话删除选中连接后，刷新清除详情和模型面板', as
   await render()
   deleted = true
   await refresh()
-  assert.equal(container.querySelector('[aria-label="连接详情"]'), null)
+  // 只把布尔值交给断言，避免失败时展开包含循环引用的 DOM 对象。
+  assert.ok(
+    container.querySelector('[aria-label="连接详情"]') === null,
+    '删除连接后，详情和模型面板应消失',
+  )
   assert.match(container.textContent ?? '', /选中的连接已删除/)
   assert.match(container.textContent ?? '', /选择一个连接以查看模型/)
 })

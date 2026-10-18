@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LoopCraft · 模型接入讨论原型</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon">L</span><strong>LoopCraft</strong
+        ><span class="divider"></span
+        ><span class="muted">工作区 · 演示团队</span>
+      </div>
+      <div class="toolbar">
+        <span class="tag">交互原型 · r1</span
+        ><label for="role" class="sr-only">预览角色</label
+        ><select id="role">
+          <option value="owner">租户负责人</option>
+          <option value="member">普通成员 · 只读</option>
+          <option value="admin">全局负责人</option>
+        </select>
+      </div>
+    </header>
+    <div class="shell">
+      <aside class="sidebar">
+        <p class="eyebrow">工作区</p>
+        <div class="nav-item">▤　工作区与成员</div>
+        <div class="nav-item active" aria-current="page">▦　模型接入</div>
+        <div class="nav-item muted">
+          ◇　Agent 模板 <span class="tag">后续</span>
+        </div>
+        <div class="aside-note">
+          讨论原型<br />本页独立运行，操作只影响示例数据，刷新恢复。
+        </div>
+      </aside>
+      <main>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">工作区 / 模型接入</p>
+            <h1>模型接入</h1>
+            <p class="muted">
+              管理供应商连接和可用模型。运行参数由后续 Agent 模板配置。
+            </p>
+          </div>
+          <div id="heading-actions" class="toolbar"></div>
+        </div>
+        <div class="notice">
+          示例模型及 ID 仅用于讨论；不会请求供应商、业务后端或保存真实密钥。
+        </div>
+        <div class="workspace">
+          <section aria-labelledby="source-heading">
+            <div class="section-heading">
+              <div>
+                <h2 id="source-heading">供应商来源</h2>
+                <p id="source-count" class="muted small"></p>
+              </div>
+            </div>
+            <div id="source-list"></div>
+          </section>
+          <section id="detail" aria-label="来源详情和模型列表"></section>
+        </div>
+        <p class="footer-note">
+          产物 r1 · 与同目录 conclusion.md 对照评审 · 右上角可切换角色预览权限。
+        </p>
+      </main>
+    </div>
+    <dialog id="editor" class="sheet" aria-labelledby="editor-title">
+      <form id="editor-form">
+        <div class="dialog-heading">
+          <div>
+            <h2 id="editor-title"></h2>
+            <p id="editor-description" class="muted small"></p>
+          </div>
+          <button
+            type="button"
+            data-close="editor"
+            class="icon-button"
+            aria-label="关闭表单"
+          >
+            ×
+          </button>
+        </div>
+        <div id="editor-fields" class="form-fields"></div>
+        <p id="form-error" class="error" role="alert"></p>
+        <footer class="dialog-actions">
+          <button type="button" data-close="editor">取消</button
+          ><button type="submit" class="primary">保存（演示）</button>
+        </footer>
+      </form>
+    </dialog>
+    <dialog id="lookup" aria-labelledby="lookup-title">
+      <div class="dialog-heading">
+        <div>
+          <h2 id="lookup-title">查询供应商模型</h2>
+          <p class="muted small">查询结果仅作候选，选择后才加入当前来源。</p>
+        </div>
+        <button
+          type="button"
+          data-close="lookup"
+          class="icon-button"
+          aria-label="关闭查询"
+        >
+          ×
+        </button>
+      </div>
+      <div class="lookup-controls">
+        <label for="lookup-scenario">演示查询结果</label
+        ><select id="lookup-scenario">
+          <option value="success">查询成功（示例）</option>
+          <option value="unsupported">供应商未实现模型列表</option>
+          <option value="failure">连接失败</option></select
+        ><label for="lookup-search" class="sr-only">搜索候选模型</label
+        ><input id="lookup-search" placeholder="搜索候选模型名称或 ID" />
+      </div>
+      <div id="lookup-results"></div>
+      <footer class="dialog-actions">
+        <button type="button" data-action="lookup-manual">手动添加</button
+        ><button
+          id="import-selected"
+          type="button"
+          class="primary"
+          data-action="import"
+        >
+          添加所选模型
+        </button>
+      </footer>
+    </dialog>
+    <dialog id="delete-dialog" aria-labelledby="delete-title">
+      <div class="dialog-heading"><h2 id="delete-title">确认删除</h2></div>
+      <p id="delete-message" class="dialog-text"></p>
+      <footer class="dialog-actions">
+        <button type="button" data-close="delete-dialog">取消</button
+        ><button type="button" class="danger" data-action="confirm-delete">
+          删除（演示）
+        </button>
+      </footer>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

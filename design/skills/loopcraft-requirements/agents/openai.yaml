@@ -1,0 +1,4 @@
+interface:
+  display_name: "LoopCraft 需求共创"
+  short_description: "围绕 LoopCraft 新需求同步产出讨论结论与独立交互原型，供 Agent 直接开发"
+  default_prompt: "使用 $loopcraft-requirements 讨论这个 LoopCraft 新需求，边讨论边展示独立交互原型，最终交付可供开发 Agent 使用的结论与原型。"

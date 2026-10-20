@@ -1,9 +1,11 @@
 package io.github.chalmery.loopcraft.identity.controller;
 
 import io.github.chalmery.loopcraft.shared.ApiResponse;
+import io.github.chalmery.loopcraft.identity.service.LoginThrottledException;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -15,6 +17,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice(basePackageClasses = {AuthController.class, io.github.chalmery.loopcraft.llm.controller.LlmAccessController.class})
 public class IdentityErrors {
+    @ExceptionHandler(LoginThrottledException.class)
+    public ResponseEntity<ApiResponse<Void>> throttled(LoginThrottledException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()))
+                .body(ApiResponse.failure(429, exception.getMessage()));
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiResponse<Void>> unauthenticated() {
         return failure(HttpStatus.UNAUTHORIZED, "账号或密码错误，或登录已失效");

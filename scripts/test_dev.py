@@ -34,6 +34,7 @@ class EnvironmentTests(unittest.TestCase):
                                     "JAVA_TOOL_OPTIONS": "-Dspring.profiles.active=dev",
                                     "LOG_DIR": "/external/logs", "LOG_LEVEL_APP": "TRACE",
                                     "LOGGING_FILE_NAME": "/external/server.log",
+                                    "LOOPCRAFT_IDENTITY_LOGINPROTECTION_ACCOUNTFAILURES": "1",
                                     "BOOTSTRAP_ADMIN_ENABLED": "true", "BOOTSTRAP_ADMIN_PASSWORD": "secret",
                                     "SESSION_COOKIE_SECURE": "true"}, clear=True):
             self.assertEqual(dev.test_environment(), {"PATH": "/bin"})

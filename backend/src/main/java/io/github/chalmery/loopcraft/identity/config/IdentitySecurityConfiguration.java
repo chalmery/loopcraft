@@ -10,6 +10,7 @@ import io.github.chalmery.loopcraft.identity.service.IdentityService;
 import io.github.chalmery.loopcraft.shared.ApiResponse;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -31,6 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
  * 登录成功后，认证信息保存在服务端 Session；后续请求由 Spring Security 从 Session 恢复。
  */
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(LoginProtectionProperties.class)
 public class IdentitySecurityConfiguration {
     /** 使用项目自己的账号表校验用户名和密码，不使用 Spring 默认生成的临时用户。 */
     @Bean

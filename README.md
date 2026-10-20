@@ -69,6 +69,10 @@ BOOTSTRAP_ADMIN_PASSWORD=replace-with-a-private-password
 
 Session 保存在单实例内存中，空闲 30 分钟过期，服务重启需重新登录；修改密码或启停账号会使旧会话失效。前端收到 401 后返回登录页；CSRF 失效返回 HTTP 403、业务码 `40301`，前端刷新令牌后仅重试一次，业务权限不足不会重试。本地 HTTP 默认关闭 Secure Cookie，可用 `SESSION_COOKIE_SECURE` 覆盖。
 
+登录防爆破默认按账号和来源 IP 双重限制：同一账号在 15 分钟窗口内连续失败 5 次后冷却 15 分钟，用户名大小写共用计数；成功认证清空该账号的失败次数。同一 IP 每 15 分钟最多放行 30 次登录尝试（含成功），更换账号或 Session 不会重置来源计数。不存在或已停用的账号同样计数；并发认证会预占账号名额，超限请求在查库和密码计算前返回 HTTP/业务码 `429`、统一提示及 `Retry-After` 秒数，拒绝请求不会延长冷却。CSRF 和请求格式校验仍先执行。
+
+限制参数位于 `application.yml` 的 `loopcraft.identity.login-protection`，可通过 Spring 环境变量覆盖，例如 `LOOPCRAFT_IDENTITY_LOGINPROTECTION_ACCOUNTFAILURES`、`LOOPCRAFT_IDENTITY_LOGINPROTECTION_IPATTEMPTS`、`LOOPCRAFT_IDENTITY_LOGINPROTECTION_WINDOW`、`LOOPCRAFT_IDENTITY_LOGINPROTECTION_MAXENTRIES`。计数保存在单实例内存，重启清空，不跨实例共享；最多保留 10000 条账号/IP 记录，过期记录在后续登录时回收，容量耗尽时拒绝新记录而不淘汰有效限制。IP 取服务端 `getRemoteAddr()`，不直接读取 `X-Forwarded-For` / `Forwarded`；当前 Next.js 转发下用户会共享代理 IP 的额度，应按访问规模调整阈值。部署时如需真实客户端 IP，须在可信代理边界配置容器的地址解析并阻止绕过代理直连；多实例部署需改用共享限流存储或网关统一限流。
+
 ## 模型接入
 
 进入租户后选择「模型接入」。同租户可为同一供应商建立多个连接，每个连接维护多个模型。普通成员只读，当前负责人和平台管理员可新增、编辑、启停、删除，以及查询供应商候选并勾选导入。来源名在租户内唯一，实际模型 ID 在来源内唯一且区分大小写。重复导入跳过已有记录，不覆盖名称或重新启用。

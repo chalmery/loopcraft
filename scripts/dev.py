@@ -53,7 +53,7 @@ def environment():
 
 def test_environment():
     # Tests never load dotenv files or inherit application/model credentials.
-    prefixes = ("SPRING_", "LLM_", "DB_", "TEST_DB_", "AGENT_", "LOGGING_", "BOOTSTRAP_ADMIN_", "SESSION_COOKIE_")
+    prefixes = ("SPRING_", "LOOPCRAFT_", "LLM_", "DB_", "TEST_DB_", "AGENT_", "LOGGING_", "BOOTSTRAP_ADMIN_", "SESSION_COOKIE_")
     excluded = {"JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "MAVEN_OPTS", "ENABLE_LLM",
                 "LOG_DIR", "LOG_LEVEL_ROOT", "LOG_LEVEL_APP"}
     return {key: value for key, value in os.environ.items()

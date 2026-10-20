@@ -3,6 +3,7 @@ package io.github.chalmery.loopcraft.identity.controller;
 import io.github.chalmery.loopcraft.identity.dto.IdentityRequests;
 import io.github.chalmery.loopcraft.identity.dto.IdentityViews;
 import io.github.chalmery.loopcraft.identity.service.IdentityService;
+import io.github.chalmery.loopcraft.identity.service.LoginProtection;
 import io.github.chalmery.loopcraft.shared.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -28,12 +29,14 @@ public class AuthController {
     private final IdentityService identity;
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository contexts;
+    private final LoginProtection loginProtection;
 
     public AuthController(IdentityService identity, AuthenticationManager authenticationManager,
-            SecurityContextRepository contexts) {
+            SecurityContextRepository contexts, LoginProtection loginProtection) {
         this.identity = identity;
         this.authenticationManager = authenticationManager;
         this.contexts = contexts;
+        this.loginProtection = loginProtection;
     }
 
     /** 获取写操作所需的 CSRF 令牌，登录和退出后需重新获取。 */
@@ -46,8 +49,10 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResponse<IdentityViews.User> login(@Valid @RequestBody IdentityRequests.Login request,
             HttpServletRequest servletRequest, HttpServletResponse response) {
-        var authentication = authenticationManager.authenticate(
-                UsernamePasswordAuthenticationToken.unauthenticated(request.username(), request.password()));
+        // 使用服务端看到的对端地址，不直接信任客户端提供的转发头。
+        var authentication = loginProtection.authenticate(request.username(), servletRequest.getRemoteAddr(),
+                () -> authenticationManager.authenticate(
+                        UsernamePasswordAuthenticationToken.unauthenticated(request.username(), request.password())));
         new ChangeSessionIdAuthenticationStrategy().onAuthentication(authentication, servletRequest, response);
         new CsrfAuthenticationStrategy(new HttpSessionCsrfTokenRepository())
                 .onAuthentication(authentication, servletRequest, response);

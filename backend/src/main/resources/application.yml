@@ -17,6 +17,11 @@ loopcraft:
     encryption-key: ${LLM_ENCRYPTION_KEY:}
     discovery-allowed-internal-hosts: ${LLM_DISCOVERY_ALLOWED_INTERNAL_HOSTS:}
   identity:
+    login-protection:
+      account-failures: 5
+      ip-attempts: 30
+      window: 15m
+      max-entries: 10000
     bootstrap:
       enabled: ${BOOTSTRAP_ADMIN_ENABLED:false}
       username: ${BOOTSTRAP_ADMIN_USERNAME:}

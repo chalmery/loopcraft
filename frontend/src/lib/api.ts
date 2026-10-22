@@ -93,7 +93,8 @@ export async function request<T>(
       // 旧页面的请求不能在重新登录后携带新会话继续提交。
       if (version !== sessionVersion) throw new Error('会话已变更，请重试')
       const headers = new Headers(options.headers)
-      if (options.body) headers.set('Content-Type', 'application/json')
+      if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type'))
+        headers.set('Content-Type', 'application/json')
       if (needsCsrf && csrf) headers.set(csrf.headerName, csrf.token)
       const response = await fetch(`/api${path}`, {
         ...options,

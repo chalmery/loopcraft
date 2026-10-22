@@ -87,6 +87,20 @@ Session 保存在单实例内存中，空闲 30 分钟过期，服务重启需�
 
 停用连接保留各模型自身状态，仍允许维护。删除来源和模型在事务中完成；新增表会继续保护有关联数据的租户不被删除。当前没有模板表或引用计数，未来模板需通过真实关联与限制删除外键接入删除保护；未实现模板运行、参数、计费或 Agent 推理调用。
 
+## Skill 管理
+
+工作区导航提供 Skill 卡片列表、搜索与分页。详情包含基本信息与版本列表；普通成员可新增、修改、启停和删除同租户自建 Skill，内置 Skill 仅负责人或平台管理员可管理。来源只读，HTTP 新增不接受内置来源。平台管理员沿用已有租户资源访问能力，不改动仅负责人可用的成员接口。
+
+基本信息（名称、描述、标签、状态）与包内文件互不自动覆盖。标识在同租户内唯一且创建后不改；首次保存同时创建 Skill 与 v1。内容编辑支持文本新增/修改/移除与二进制文件替换，也可上传 ZIP 替换本次草稿的完整文件集合。每次保存追加不可变整包版本，旧版本只读，不做回退和版本说明，不执行脚本或接入 Agent。
+
+先按 [Skill SQL 顺序](backend/sql/skill/README.md) 手动建表，并启用下文的 RustFS 存储。部署侧须预先建立私有 Bucket，默认 `loopcraft-skills`，可通过 `SKILL_BUCKET` 覆盖；应用不自动建桶。对象 Key 由服务端按租户、Skill 和随机标识生成，接口不返回存储地址。存储未启用时列表和基本信息仍可读取，首次创建、读文件或保存版本返回 503。
+
+包限制：ZIP 最多 20 MiB，最多 200 个文件，单文件最多 2 MiB，解压后总内容最多 10 MiB；文件路径最长 240 字符。根目录必须有非空 UTF-8 `SKILL.md`，兼容单层包目录包装。不解压到操作系统目录，不执行压缩包内文件；二进制按原字节保存，文件被当作普通数据，不跟随链接。当前不提供版本下载或从历史重新编辑。
+
+删除需要确认，先隐藏记录，后台每分钟按引用清理全部版本对象，失败保留记录重试。基本信息保存使用修订号，内容保存使用最新版本基线与请求 UUID；并发冲突保留页面草稿、提示刷新，重复提交同一内容不会多建版本。
+
+API 位于 `/api/tenants/{tenantId}/skills`：GET 列表、POST multipart 首次创建；`/{id}` GET/PATCH/DELETE；`/{id}/versions` GET 分页历史、POST multipart 保存；`/{id}/versions/{number}` GET 文件集合；`/package-preview` POST multipart 校验 ZIP（不落存储）。multipart 的 `input` 是 JSON 字符串，含 `requestId` 和按 files 顺序的 `paths`，保存还需 `baseVersion`；压缩包可直接用 `archive` 替代 files/paths。PATCH 提交完整 name/description/tags/enabled/revision；不接收包内字段改写基本信息。
+
 ## 文件存储
 
 后端 `storage` 功能包使用 AWS SDK for Java v2，通过 S3 协议连接 RustFS，固定使用 path-style 寻址。该依赖只用于对象读写，不参与 Agent 循环；接入方式见 [RustFS Java SDK 文档](https://docs.rustfs.com/en/developer/sdk/java)。

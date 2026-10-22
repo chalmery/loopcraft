@@ -11,3 +11,7 @@ spring:
 logging:
   file:
     name: ""
+
+loopcraft:
+  skill:
+    cleanup-enabled: false

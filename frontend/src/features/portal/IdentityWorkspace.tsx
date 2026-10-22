@@ -24,14 +24,26 @@ import { ProfileSection } from '@/features/profile/ProfileSection'
 import { AccountMenu } from '@/features/profile/AccountMenu'
 import { profileApi } from '@/features/profile/api'
 import { TenantSelection } from '@/features/workspace/TenantSelection'
+import { SkillManagement } from '@/features/skills/SkillManagement'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
 import { LlmAccess } from '@/features/llm-access/LlmAccess'
 import { WorkspaceSection } from '@/features/workspace/WorkspaceSection'
 import { workspaceApi } from '@/features/workspace/api'
 import { useWorkspaceData } from '@/features/workspace/useWorkspaceData'
 
-type Section = 'llm' | 'workspace' | 'profile' | 'tenants' | 'users'
+type Section = 'skills' | 'llm' | 'workspace' | 'profile' | 'tenants' | 'users'
 const titles: Record<Section, string> = {
   llm: '模型接入',
+  skills: 'Skill 管理',
   workspace: '工作区与成员',
   profile: '个人设置',
   tenants: '租户管理',
@@ -61,6 +73,12 @@ function AuthenticatedPortal({
   const [section, setSection] = useState<Section>('profile')
   const [screen, setScreen] = useState<'selection' | 'settings'>('selection')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [skillDirty, setSkillDirty] = useState(false)
+  const [navigation, setNavigation] = useState<(() => void) | null>(null)
+  function guardNavigation(action: () => void) {
+    if (skillDirty) setNavigation(() => action)
+    else action()
+  }
   const [busy, setBusy] = useState(false)
   const workspace = useWorkspaceData(user.id)
   const { tenants, tenant, tenantId, currentMembers, loading, error, setError } = workspace
@@ -71,7 +89,12 @@ function AuthenticatedPortal({
       ? 'profile'
       : section
   const links = [
-    ...(tenant ? [{ id: 'llm' as const, label: titles.llm, icon: Cpu }] : []),
+    ...(tenant
+      ? [
+          { id: 'llm' as const, label: titles.llm, icon: Cpu },
+          { id: 'skills' as const, label: titles.skills, icon: Cpu },
+        ]
+      : []),
     ...(isOwner
       ? [{ id: 'workspace' as const, label: titles.workspace, icon: PanelsTopLeft }]
       : []),
@@ -100,8 +123,10 @@ function AuthenticatedPortal({
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : '刷新租户失败'))
   }
   function profile() {
-    setScreen('settings')
-    setSection('profile')
+    guardNavigation(() => {
+      setScreen('settings')
+      setSection('profile')
+    })
   }
   function selectTenant(id: number) {
     workspace.setTenantId(id)
@@ -138,10 +163,12 @@ function AuthenticatedPortal({
       busy={busy}
       onProfile={profile}
       onLogout={() =>
-        void run(async () => {
-          await authApi.logout()
-          onUser(null)
-        }, '已退出登录')
+        guardNavigation(() => {
+          void run(async () => {
+            await authApi.logout()
+            onUser(null)
+          }, '已退出登录')
+        })
       }
     />
   )
@@ -256,9 +283,9 @@ function AuthenticatedPortal({
                   aria-current={visibleSection === id ? 'page' : undefined}
                   aria-label={sidebarCollapsed ? label : undefined}
                   title={sidebarCollapsed ? label : undefined}
-                  onClick={() => setSection(id)}
+                  onClick={() => guardNavigation(() => setSection(id))}
                 >
-                  <Icon className="size-4" aria-hidden="true" />
+                  {id !== 'skills' && <Icon className="size-4" aria-hidden="true" />}
                   <span className={cn(sidebarCollapsed && 'md:hidden')}>{label}</span>
                 </Button>
               ))}
@@ -266,6 +293,32 @@ function AuthenticatedPortal({
           </>
         )}
       </aside>
+      <AlertDialog
+        open={navigation !== null}
+        onOpenChange={(open) => {
+          if (!open) setNavigation(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>放弃尚未保存的 Skill 修改？</AlertDialogTitle>
+            <AlertDialogDescription>切换页面或租户后，未保存的草稿会丢失。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>继续编辑</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const action = navigation
+                setNavigation(null)
+                setSkillDirty(false)
+                action?.()
+              }}
+            >
+              放弃并继续
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <main className="flex min-h-screen min-w-0 flex-col">
         <header className="flex h-12 items-center justify-between gap-2 border-b border-border bg-surface px-3 md:px-5">
           <div className="min-w-0 truncate text-sm font-medium">{titles[visibleSection]}</div>
@@ -273,7 +326,11 @@ function AuthenticatedPortal({
             <Select
               value={tenant ? String(tenant.id) : ''}
               disabled={busy || loading || tenants.length === 0}
-              onValueChange={switchTenant}
+              onValueChange={(value) =>
+                guardNavigation(() => {
+                  void switchTenant(value)
+                })
+              }
             >
               <SelectTrigger aria-label="切换租户" variant="ghost" className="w-28 sm:w-48">
                 <Building2 className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -343,6 +400,14 @@ function AuthenticatedPortal({
               key={tenantId}
               tenantId={tenantId}
               canManage={isOwner || user.platformAdmin}
+            />
+          )}
+          {visibleSection === 'skills' && tenantId !== null && (
+            <SkillManagement
+              key={tenantId}
+              tenantId={tenantId}
+              canManageBuiltIn={isOwner || user.platformAdmin}
+              onDirtyChange={setSkillDirty}
             />
           )}
           {visibleSection === 'profile' && (

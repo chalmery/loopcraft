@@ -15,7 +15,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.server.ResponseStatusException;
 
-@RestControllerAdvice(basePackageClasses = {AuthController.class, io.github.chalmery.loopcraft.llm.controller.LlmAccessController.class})
+@RestControllerAdvice(basePackageClasses = {AuthController.class, io.github.chalmery.loopcraft.llm.controller.LlmAccessController.class,
+        io.github.chalmery.loopcraft.skill.controller.SkillController.class})
 public class IdentityErrors {
     @ExceptionHandler(LoginThrottledException.class)
     public ResponseEntity<ApiResponse<Void>> throttled(LoginThrottledException exception) {
@@ -35,7 +36,9 @@ public class IdentityErrors {
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,
-            HandlerMethodValidationException.class, TypeMismatchException.class})
+            HandlerMethodValidationException.class, TypeMismatchException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class,
+            org.springframework.web.multipart.MultipartException.class})
     public ResponseEntity<ApiResponse<Void>> invalid() {
         // 不回显密码、SQL 或异常中的参数。
         return failure(HttpStatus.BAD_REQUEST, "请求字段格式或长度不合法");

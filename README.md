@@ -1,6 +1,6 @@
 # LoopCraft
 
-LoopCraft 是用于学习和构建云端 ReAct Agent 的全栈项目。当前提供用户、租户及供应商连接/模型管理；前端支持登录、个人设置、工作区成员、模型接入和平台账号管理。Agent 对话入口、ReAct 循环和会话持久化尚未接入。
+LoopCraft 是用于学习和构建云端 ReAct Agent 的全栈项目。当前提供用户、租户、供应商连接/模型管理及 RustFS 通用文件存储能力；前端支持登录、个人设置、工作区成员、模型接入和平台账号管理。Agent 对话入口、ReAct 循环和会话持久化尚未接入。
 
 - `backend/`：Java 25、Spring Boot 4.1.1、PostgreSQL、MyBatis-Plus、Maven。基础包为 `io.github.chalmery.loopcraft`。
 - `frontend/`：Next.js App Router、React、TypeScript、Bun、Tailwind CSS 4、shadcn/ui、Lucide；运行与组件说明见 [前端 README](frontend/README.md)。
@@ -86,6 +86,45 @@ Session 保存在单实例内存中，空闲 30 分钟过期，服务重启需�
 确需访问可信内网服务时，由部署者在本地环境设置 `LLM_DISCOVERY_ALLOWED_INTERNAL_HOSTS`，以逗号分隔精确主机名或 IP，例如 `models.internal.example`；不支持通配符或子域自动放行。此配置授予该主机的内网访问能力，不能由租户接口修改。未配置时默认不放行；保存连接仍只校验字段，不发起 DNS 或供应商请求。
 
 停用连接保留各模型自身状态，仍允许维护。删除来源和模型在事务中完成；新增表会继续保护有关联数据的租户不被删除。当前没有模板表或引用计数，未来模板需通过真实关联与限制删除外键接入删除保护；未实现模板运行、参数、计费或 Agent 推理调用。
+
+## 文件存储
+
+后端 `storage` 功能包使用 AWS SDK for Java v2，通过 S3 协议连接 RustFS，固定使用 path-style 寻址。该依赖只用于对象读写，不参与 Agent 循环；接入方式见 [RustFS Java SDK 文档](https://docs.rustfs.com/en/developer/sdk/java)。
+
+`FileStorage` 为内部能力，提供上传、元数据查询、流式读取、幂等删除和短时下载链接。每次调用显式传入 `ObjectLocation(bucket, key)`，模块不生成业务 ID，不固定桶或 Key 前缀，也不依赖租户、Skill 或制品概念。相同桶和 Key 的上传会覆盖当前对象；需要版本管理或防覆盖时由业务设计规则。桶的创建、权限、版本和生命周期由部署者管理，应用启动不访问远端、不自动建桶或设置公开访问。
+
+默认关闭，启用时在忽略提交的 `env/dev/.env` 配置：
+
+```dotenv
+STORAGE_ENABLED=true
+STORAGE_ENDPOINT=http://127.0.0.1:9000
+STORAGE_REGION=us-east-1
+STORAGE_ACCESS_KEY=<your-access-key>
+STORAGE_SECRET_KEY=<your-secret-key>
+```
+
+使用 S3 API 地址，不要填控制台端口。启用而缺少凭证或配置不合法时启动失败；没有默认账号密码。连接仅使用显式配置的凭证，不从 AWS 默认凭证链发现账号。应用账号应仅被授予所需桶的对象权限。
+
+其他模块通过构造器注入 `FileStorage` 后调用，例如（`key` 由调用业务生成）：
+
+```java
+var location = new ObjectLocation(bucket, key);
+StoredFile uploaded = storage.upload(location, sourcePath, "说明.txt", "text/plain");
+StoredFile metadata = storage.stat(location);
+try (FileDownload download = storage.open(location)) {
+    download.stream().transferTo(outputStream);
+}
+URI temporaryLink = storage.presignDownload(location);
+storage.delete(location);
+```
+
+上传使用本地 `Path`，源文件在调用期间须保持不变，SDK 从磁盘读取和重试，不将整个文件加载进内存；HTTP 业务接入时可先将上传流写入临时文件，并在调用后清理。调用方负责关闭下载流。默认单文件上限 20 MiB（`STORAGE_MAX_FILE_SIZE=20MB`），单次 PUT 不超过 5 GiB；暂不提供分片或断点续传。零字节文件允许上传，中文原名保存在对象元数据中。
+
+默认连接超时 3 秒、读取超时 30 秒、SDK 调用总超时 60 秒，分别用 `STORAGE_CONNECT_TIMEOUT`、`STORAGE_READ_TIMEOUT`、`STORAGE_REQUEST_TIMEOUT` 覆盖。读取超时限制单次网络等待；流式消费的整体时间由调用业务控制。临时链接默认 5 分钟，`STORAGE_DOWNLOAD_LINK_TTL` 可设为 1 秒至 1 小时；链接使用配置的 endpoint，必须能被下载方访问，不能在签名后替换域名。持有链接者在有效期内可下载，不再经过应用 Session 校验，不能把链接作为永久文件引用或写入日志。
+
+该模块不开放 HTTP 接口，也不建立文件元数据表。业务调用前须校验权限，从可信业务记录获取桶和 Key，不将客户端地址直接透传；业务归属、文件引用持久化及数据库事务失败后的文件清理由调用模块负责。读取/查询返回 404 时抛出 `FileStorageException(NOT_FOUND)`（HEAD 不能区分缺桶和缺对象），其余远端故障归一化为 `UNAVAILABLE`，不向上层传播 SDK 的原始异常文本；本地文件 I/O 错误保留为 `IOException`。
+
+常规测试使用随机端口的本地 HTTP 桩运行真实 S3 SDK，不连接开发 RustFS，不读取存储凭证。
 
 ## 日志与排查
 

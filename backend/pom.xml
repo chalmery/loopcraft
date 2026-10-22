@@ -29,8 +29,39 @@
 	<properties>
 		<java.version>25</java.version>
 		<mybatis-plus.version>3.5.17</mybatis-plus.version>
+		<aws-sdk.version>2.57.2</aws-sdk.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>bom</artifactId>
+				<version>${aws-sdk.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
+		<!-- RustFS 通过 S3 协议接入；同步客户端适配现有 MVC 和虚拟线程。 -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
+			<exclusions>
+				<exclusion>
+					<groupId>software.amazon.awssdk</groupId>
+					<artifactId>apache-client</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>software.amazon.awssdk</groupId>
+					<artifactId>netty-nio-client</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>url-connection-client</artifactId>
+		</dependency>
 		<!-- 连接时校验并固定 DNS 结果，避免供应商地址绕过出站限制。 -->
 		<dependency>
 			<groupId>org.apache.httpcomponents.client5</groupId>

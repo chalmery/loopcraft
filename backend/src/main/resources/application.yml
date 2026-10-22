@@ -13,6 +13,17 @@ spring:
     keep-alive: true
 
 loopcraft:
+  storage:
+    enabled: ${STORAGE_ENABLED:false}
+    endpoint: ${STORAGE_ENDPOINT:http://127.0.0.1:9000}
+    region: ${STORAGE_REGION:us-east-1}
+    access-key: ${STORAGE_ACCESS_KEY:}
+    secret-key: ${STORAGE_SECRET_KEY:}
+    max-file-size: ${STORAGE_MAX_FILE_SIZE:20MB}
+    connect-timeout: ${STORAGE_CONNECT_TIMEOUT:3s}
+    read-timeout: ${STORAGE_READ_TIMEOUT:30s}
+    request-timeout: ${STORAGE_REQUEST_TIMEOUT:60s}
+    download-link-ttl: ${STORAGE_DOWNLOAD_LINK_TTL:5m}
   llm:
     encryption-key: ${LLM_ENCRYPTION_KEY:}
     discovery-allowed-internal-hosts: ${LLM_DISCOVERY_ALLOWED_INTERNAL_HOSTS:}

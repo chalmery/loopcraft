@@ -36,7 +36,10 @@ class EnvironmentTests(unittest.TestCase):
                                     "LOGGING_FILE_NAME": "/external/server.log",
                                     "LOOPCRAFT_IDENTITY_LOGINPROTECTION_ACCOUNTFAILURES": "1",
                                     "BOOTSTRAP_ADMIN_ENABLED": "true", "BOOTSTRAP_ADMIN_PASSWORD": "secret",
-                                    "SESSION_COOKIE_SECURE": "true"}, clear=True):
+                                    "SESSION_COOKIE_SECURE": "true", "STORAGE_ENABLED": "true",
+                                    "STORAGE_SECRET_KEY": "external-secret", "RUSTFS_SECRET_KEY": "external-secret",
+                                    "AWS_ACCESS_KEY_ID": "external-key", "AWS_SECRET_ACCESS_KEY": "external-secret",
+                                    "AWS_ENDPOINT_URL": "https://external.example"}, clear=True):
             self.assertEqual(dev.test_environment(), {"PATH": "/bin"})
 
     def test_launcher_only_reads_dev_configuration(self):

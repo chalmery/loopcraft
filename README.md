@@ -89,9 +89,9 @@ Session 保存在单实例内存中，空闲 30 分钟过期，服务重启需�
 
 ## Skill 管理
 
-工作区导航提供 Skill 卡片列表、搜索与分页。详情包含基本信息与版本列表；普通成员可新增、修改、启停和删除同租户自建 Skill，内置 Skill 仅负责人或平台管理员可管理。来源只读，HTTP 新增不接受内置来源。平台管理员沿用已有租户资源访问能力，不改动仅负责人可用的成员接口。
+工作区侧栏的“插件”分组提供带图标的 Skill 管理入口，支持卡片/列表切换、来源筛选、搜索与分页；顶部“本地”显示当前工作区资源，“市场”暂未开放。卡片展示最新内容的文件数与保存时间，来源数量按整个租户统计，不受分页或关键词影响。详情宽屏并排展示基本信息与内容版本，窄屏纵向排列；普通成员可新增、修改、启停和删除同租户自建 Skill，内置 Skill 仅负责人或平台管理员可管理。来源只读，HTTP 新增不接受内置来源。平台管理员沿用已有租户资源访问能力，不改动仅负责人可用的成员接口。
 
-基本信息（名称、描述、标签、状态）与包内文件互不自动覆盖。标识在同租户内唯一且创建后不改；首次保存同时创建 Skill 与 v1。内容编辑支持文本新增/修改/移除与二进制文件替换，也可上传 ZIP 替换本次草稿的完整文件集合。每次保存追加不可变整包版本，旧版本只读，不做回退和版本说明，不执行脚本或接入 Agent。
+新建支持在线编写，或先导入 ZIP 再进入编辑页；两种新建方式均与详情一致，按“基本信息 / 文件与版本”标签页展示，切换保留草稿。新建页不重复提供 ZIP 上传入口，导入统一从列表发起。导入时用 SKILL.md frontmatter 的 name 预填标识和名称、description 预填描述，保存前可编辑；字段缺失或无法解析时手动补充。首次导入后的基本信息（名称、描述、标签、状态）与包内文件互不自动覆盖，已有 Skill 上传新包也不更新这些字段。标识在同租户内唯一且创建后不改；首次保存同时创建 Skill 与 v1。内容编辑支持文本新增/修改/移除与二进制文件替换，也可上传 ZIP 替换本次草稿的完整文件集合。每次保存追加不可变整包版本，旧版本只读，不做回退和版本说明，不执行脚本或接入 Agent。
 
 先按 [Skill SQL 顺序](backend/sql/skill/README.md) 手动建表，并启用下文的 RustFS 存储。部署侧须预先建立私有 Bucket，默认 `loopcraft-skills`，可通过 `SKILL_BUCKET` 覆盖；应用不自动建桶。对象 Key 由服务端按租户、Skill 和随机标识生成，接口不返回存储地址。存储未启用时列表和基本信息仍可读取，首次创建、读文件或保存版本返回 503。
 
@@ -99,7 +99,7 @@ Session 保存在单实例内存中，空闲 30 分钟过期，服务重启需�
 
 删除需要确认，先隐藏记录，后台每分钟按引用清理全部版本对象，失败保留记录重试。基本信息保存使用修订号，内容保存使用最新版本基线与请求 UUID；并发冲突保留页面草稿、提示刷新，重复提交同一内容不会多建版本。
 
-API 位于 `/api/tenants/{tenantId}/skills`：GET 列表、POST multipart 首次创建；`/{id}` GET/PATCH/DELETE；`/{id}/versions` GET 分页历史、POST multipart 保存；`/{id}/versions/{number}` GET 文件集合；`/package-preview` POST multipart 校验 ZIP（不落存储）。multipart 的 `input` 是 JSON 字符串，含 `requestId` 和按 files 顺序的 `paths`，保存还需 `baseVersion`；压缩包可直接用 `archive` 替代 files/paths。PATCH 提交完整 name/description/tags/enabled/revision；不接收包内字段改写基本信息。
+API 位于 `/api/tenants/{tenantId}/skills`：GET 列表（`page/size/q` 及可选 `origin=CUSTOM|SYSTEM`，响应在分页字段外带租户级 `counts.custom/system`；每条带 `fileCount/contentUpdatedAt`）、POST multipart 首次创建；`/{id}` GET/PATCH/DELETE；`/{id}/versions` GET 分页历史、POST multipart 保存；`/{id}/versions/{number}` GET 文件集合；`/package-preview` POST multipart 校验 ZIP（不落存储）。multipart 的 `input` 是 JSON 字符串，含 `requestId` 和按 files 顺序的 `paths`，保存还需 `baseVersion`；压缩包可直接用 `archive` 替代 files/paths。PATCH 提交完整 name/description/tags/enabled/revision；不接收包内字段改写基本信息。
 
 ## 文件存储
 

@@ -21,7 +21,7 @@ export function TagEditor({
   }
   return (
     <fieldset
-      className="flex flex-wrap items-center gap-2 rounded-md border border-input bg-surface p-2"
+      className="flex flex-wrap items-center gap-2 rounded-md border border-input bg-surface p-2 focus-within:border-text-muted"
       aria-label="标签"
     >
       {value.map((tag, index) => (
@@ -43,7 +43,7 @@ export function TagEditor({
       {!disabled && (
         <>
           <Input
-            className="min-w-28 flex-1"
+            className="min-w-28 flex-1 border-0 bg-transparent px-0"
             aria-label="输入新标签"
             placeholder="输入后按 Enter"
             value={text}

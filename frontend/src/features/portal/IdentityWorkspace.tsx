@@ -1,7 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Building2, Cpu, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Users } from 'lucide-react'
+import {
+  Building2,
+  Cpu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelsTopLeft,
+  Puzzle,
+  Users,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { LoopCraftMark } from '@/components/layout/LoopCraftMark'
 import { Button } from '@/components/ui/button'
@@ -89,12 +97,7 @@ function AuthenticatedPortal({
       ? 'profile'
       : section
   const links = [
-    ...(tenant
-      ? [
-          { id: 'llm' as const, label: titles.llm, icon: Cpu },
-          { id: 'skills' as const, label: titles.skills, icon: Cpu },
-        ]
-      : []),
+    ...(tenant ? [{ id: 'llm' as const, label: titles.llm, icon: Cpu }] : []),
     ...(isOwner
       ? [{ id: 'workspace' as const, label: titles.workspace, icon: PanelsTopLeft }]
       : []),
@@ -104,6 +107,14 @@ function AuthenticatedPortal({
           { id: 'users' as const, label: titles.users, icon: Users },
         ]
       : []),
+  ]
+
+  const navigationGroups = [
+    {
+      label: '插件',
+      items: tenant ? [{ id: 'skills' as const, label: titles.skills, icon: Puzzle }] : [],
+    },
+    { label: '后台配置', items: links },
   ]
 
   async function run(action: () => Promise<void>, success: string) {
@@ -259,39 +270,43 @@ function AuthenticatedPortal({
             )}
           </Button>
         </div>
-        {links.length > 0 && (
-          <>
-            <div
-              className={cn(
-                'mx-3 mt-4 mb-1.5 text-xs font-medium text-muted-foreground',
-                sidebarCollapsed && 'md:hidden',
-              )}
-            >
-              后台配置
-            </div>
-            <nav className="flex flex-col gap-1" aria-label="后台配置">
-              {links.map(({ id, label, icon: Icon }) => (
-                <Button
-                  key={id}
-                  variant="ghost"
+        <div className="mt-3 flex min-w-0 gap-4 overflow-x-auto px-3 md:mt-0 md:block md:px-0">
+          {navigationGroups
+            .filter((group) => group.items.length > 0)
+            .map((group) => (
+              <div key={group.label} className="shrink-0">
+                <div
                   className={cn(
-                    'w-full justify-start rounded-none px-3 text-secondary',
-                    sidebarCollapsed && 'md:justify-center md:px-0',
-                    visibleSection === id &&
-                      'bg-accent-soft text-accent hover:enabled:bg-accent-soft',
+                    'mx-3 mt-4 mb-1.5 hidden text-xs font-medium text-muted-foreground md:block',
+                    sidebarCollapsed && 'md:hidden',
                   )}
-                  aria-current={visibleSection === id ? 'page' : undefined}
-                  aria-label={sidebarCollapsed ? label : undefined}
-                  title={sidebarCollapsed ? label : undefined}
-                  onClick={() => guardNavigation(() => setSection(id))}
                 >
-                  {id !== 'skills' && <Icon className="size-4" aria-hidden="true" />}
-                  <span className={cn(sidebarCollapsed && 'md:hidden')}>{label}</span>
-                </Button>
-              ))}
-            </nav>
-          </>
-        )}
+                  {group.label}
+                </div>
+                <nav className="flex gap-1 md:flex-col" aria-label={group.label}>
+                  {group.items.map(({ id, label, icon: Icon }) => (
+                    <Button
+                      key={id}
+                      variant="ghost"
+                      className={cn(
+                        'w-auto justify-start rounded-md px-3 text-secondary md:w-full md:rounded-none',
+                        sidebarCollapsed && 'md:justify-center md:px-0',
+                        visibleSection === id &&
+                          'bg-accent-soft text-accent hover:enabled:bg-accent-soft',
+                      )}
+                      aria-current={visibleSection === id ? 'page' : undefined}
+                      aria-label={sidebarCollapsed ? label : undefined}
+                      title={sidebarCollapsed ? label : undefined}
+                      onClick={() => guardNavigation(() => setSection(id))}
+                    >
+                      <Icon className="size-4" aria-hidden="true" />
+                      <span className={cn(sidebarCollapsed && 'md:hidden')}>{label}</span>
+                    </Button>
+                  ))}
+                </nav>
+              </div>
+            ))}
+        </div>
       </aside>
       <AlertDialog
         open={navigation !== null}

@@ -7,7 +7,7 @@ import { Select as SelectPrimitive } from 'radix-ui'
 import { cn } from '@/lib/utils'
 
 const selectTriggerVariants = cva(
-  'flex min-w-0 items-center justify-between gap-2 rounded-lg px-3 text-sm text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring hover:enabled:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground data-[state=open]:bg-surface-subtle [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:flex-1 [&_[data-slot=select-value]]:truncate [&_[data-slot=select-value]]:text-left [&_svg]:shrink-0',
+  'flex min-w-0 items-center justify-between gap-2 rounded-lg px-3 text-sm text-foreground transition-colors focus-visible:border-text-muted focus-visible:outline-none hover:enabled:bg-surface-subtle disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground data-[state=open]:bg-surface-subtle [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:flex-1 [&_[data-slot=select-value]]:truncate [&_[data-slot=select-value]]:text-left [&_svg]:shrink-0',
   {
     variants: {
       variant: {

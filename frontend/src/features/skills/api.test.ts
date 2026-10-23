@@ -1,7 +1,7 @@
 import { afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { clearCsrf } from '@/lib/api'
-import { isContent, skillApi } from './api'
+import { isContent, isSkillPage, skillApi } from './api'
 const originalFetch = globalThis.fetch
 afterEach(() => {
   globalThis.fetch = originalFetch
@@ -66,4 +66,25 @@ test('内容响应拒绝缺失数据和同时出现文本与二进制的响应',
     { path: 'x', size: -1, text: 'a', base64: null },
   ])
     assert.equal(isContent({ number: 1, files: [file] }), false)
+})
+
+test('来源筛选发送到服务端，工作区数量独立于当前页', async () => {
+  globalThis.fetch = async (url) => {
+    assert.equal(
+      String(url),
+      '/api/tenants/7/skills?page=2&size=12&q=%E6%A0%87%E7%AD%BE&origin=CUSTOM',
+    )
+    return response({
+      records: [],
+      total: 13,
+      page: 2,
+      size: 12,
+      counts: { custom: 13, system: 4 },
+    })
+  }
+  const page = await skillApi.list(7, 2, '标签', 'CUSTOM')
+  assert.equal(page.total, 13)
+  assert.deepEqual(page.counts, { custom: 13, system: 4 })
+  for (const counts of [null, {}, { custom: -1, system: 0 }, { custom: 1, system: '4' }])
+    assert.equal(isSkillPage({ records: [], total: 0, page: 1, size: 12, counts }), false)
 })

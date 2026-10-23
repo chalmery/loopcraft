@@ -18,6 +18,7 @@ import io.github.chalmery.loopcraft.identity.service.IdentityService;
 import io.github.chalmery.loopcraft.skill.dto.SkillInputs;
 import io.github.chalmery.loopcraft.skill.dto.SkillViews;
 import io.github.chalmery.loopcraft.skill.service.SkillService;
+import io.github.chalmery.loopcraft.skill.service.SkillPackages;
 import io.github.chalmery.loopcraft.storage.model.FileDownload;
 import io.github.chalmery.loopcraft.storage.model.ObjectLocation;
 import io.github.chalmery.loopcraft.storage.model.StoredFile;
@@ -93,6 +94,60 @@ class SkillIT {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM lc_skill_version",Long.class)).isEqualTo(1);
         objects.failDelete=false;skills.purge(tenant,s.id());assertThat(objects.data).isEmpty();assertThat(jdbc.queryForObject("SELECT count(*) FROM lc_skill",Long.class)).isZero();
     }
+    @Test void archivePreviewParsesDefaultsWithoutCreatingRecordsOrObjects() throws Exception {
+        MockMultipartFile archive = new MockMultipartFile("archive", "preview.zip", "application/zip", SkillPackages.zip(files));
+        String endpoint = "/api/tenants/" + tenant + "/skills/package-preview";
+        mvc.perform(multipart(endpoint).file(archive).with(authentication(auth(member))).with(csrf()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.slug").value("package-name"))
+                .andExpect(jsonPath("$.data.name").value("package-name"))
+                .andExpect(jsonPath("$.data.description").value("包内描述"))
+                .andExpect(jsonPath("$.data.files.length()").value(2));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM lc_skill", Long.class)).isZero();
+        assertThat(objects.data).isEmpty();
+        mvc.perform(multipart(endpoint).file(new MockMultipartFile("archive", "bad.zip", "application/zip", new byte[]{1, 2}))
+                .with(authentication(auth(member))).with(csrf())).andExpect(status().isBadRequest());
+        mvc.perform(multipart(endpoint).file(archive).with(authentication(auth(outsider))).with(csrf()))
+                .andExpect(status().isForbidden());
+        mvc.perform(multipart(endpoint).file(archive).with(authentication(auth(member))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test void libraryFiltersAndCountsRemainTenantScopedAcrossPages() throws Exception {
+        SkillViews.Summary system = create();
+        jdbc.update("UPDATE lc_skill SET origin='SYSTEM' WHERE id=?", system.id());
+        SkillViews.Summary custom = skills.create(member, tenant, new SkillInputs.Create("custom-target", "自建目标", "描述",
+                List.of("验收"), UUID.randomUUID().toString(), null), files);
+        for (int i = 0; i < 12; i++) skills.create(member, tenant, new SkillInputs.Create("custom-" + i, "自建 " + i,
+                "分页样例", List.of(), UUID.randomUUID().toString(), null), files);
+        skills.create(outsider, other, new SkillInputs.Create("other-tenant", "其他租户", "描述", List.of(),
+                UUID.randomUUID().toString(), null), files);
+        SkillViews.Summary removed = skills.create(member, tenant, new SkillInputs.Create("removed", "待删除", "描述", List.of(),
+                UUID.randomUUID().toString(), null), files);
+        skills.delete(member, tenant, removed.id(), removed.revision());
+        SkillViews.ListPage all = skills.list(member, tenant, 1, 5, null, null);
+        assertThat(all.records()).hasSize(5);
+        assertThat(all.total()).isEqualTo(14);
+        assertThat(all.counts().custom()).isEqualTo(13);
+        assertThat(all.counts().system()).isEqualTo(1);
+        SkillViews.ListPage second = skills.list(member, tenant, 2, 5, null, "CUSTOM");
+        assertThat(second.records()).hasSize(5).allMatch(item -> item.origin().equals("CUSTOM"));
+        assertThat(second.total()).isEqualTo(13);
+        assertThat(second.counts()).isEqualTo(all.counts());
+        assertThat(skills.list(member, tenant, 1, 5, "不存在", "SYSTEM").counts()).isEqualTo(all.counts());
+        Map<String, byte[]> changed = Map.of("SKILL.md", files.get("SKILL.md"), "guide.md", new byte[]{65}, "assets/a.bin", new byte[]{0});
+        SkillViews.Version saved = skills.save(member, tenant, custom.id(), new SkillInputs.Save(1, UUID.randomUUID().toString(), null), changed);
+        skills.update(member, tenant, custom.id(), new SkillInputs.Metadata("自建目标", "更新描述", List.of(), true, custom.revision()));
+        SkillViews.Summary latest = skills.list(member, tenant, 1, 5, "自建目标", "CUSTOM").records().getFirst();
+        assertThat(latest.fileCount()).isEqualTo(3);
+        assertThat(latest.latestVersion()).isEqualTo(2);
+        assertThat(latest.contentUpdatedAt()).isCloseTo(saved.createdAt(),
+                org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.MICROS));
+        mvc.perform(get("/api/tenants/" + tenant + "/skills").param("origin", "INVALID")
+                .with(authentication(auth(member)))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/tenants/" + tenant + "/skills").param("origin", "CUSTOM")
+                .with(authentication(auth(outsider)))).andExpect(status().isForbidden());
+    }
+
     @Test void builtinAuthorizationAndTenantScopeAreServerEnforced() throws Exception {
         var s=create();jdbc.update("UPDATE lc_skill SET origin='SYSTEM' WHERE id=?",s.id());
         mvc.perform(get(base(s.id())).with(authentication(auth(member)))).andExpect(status().isOk());

@@ -97,12 +97,16 @@
   }
 
   button:focus-visible,
-  input:focus-visible,
-  select:focus-visible,
-  textarea:focus-visible,
   a:focus-visible {
     outline: 2px solid var(--border-strong);
     outline-offset: 2px;
+  }
+
+  input:not([type='checkbox']):not([type='radio']):not([type='file']):focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+    border-color: var(--text-muted);
   }
 
   ::selection {

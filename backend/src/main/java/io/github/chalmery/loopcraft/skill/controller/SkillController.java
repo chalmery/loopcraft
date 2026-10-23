@@ -42,13 +42,14 @@ public class SkillController {
 
     /** 所有租户成员可搜索、分页查看自建和内置 Skill。 */
     @GetMapping
-    public ApiResponse<SkillViews.Page<SkillViews.Summary>> list(Authentication auth, @PathVariable @Positive long tenantId,
+    public ApiResponse<SkillViews.ListPage> list(Authentication auth, @PathVariable @Positive long tenantId,
             @RequestParam(defaultValue = "1") @Min(1) int page, @RequestParam(defaultValue = "12") @Min(1) @Max(100) int size,
-            @RequestParam(required = false) @Size(max = 160) String q) {
-        return ApiResponse.success(skills.list(identity.current(auth), tenantId, page, size, q));
+            @RequestParam(required = false) @Size(max = 160) String q,
+            @RequestParam(required = false) String origin) {
+        return ApiResponse.success(skills.list(identity.current(auth), tenantId, page, size, q, origin));
     }
 
-    /** 首次保存同时创建平台记录与 v1；包内字段不回填基本信息。 */
+    /** 首次保存同时创建平台记录与 v1，基本信息以用户确认的表单为准。 */
     @PostMapping(consumes = "multipart/form-data")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<SkillViews.Summary> create(Authentication auth, @PathVariable @Positive long tenantId,
@@ -108,12 +109,12 @@ public class SkillController {
         return ApiResponse.success(skills.save(actor, tenantId, id, data, SkillPackages.input(data.paths(), files, archive)));
     }
 
-    /** 上传包预览不落盘、不创建版本，也不从文件内容解析平台字段。 */
+    /** 上传包预览不落盘、不创建版本；返回新建表单的建议值。 */
     @PostMapping(path = "/package-preview", consumes = "multipart/form-data")
-    public ApiResponse<SkillViews.Content> preview(Authentication auth, @PathVariable @Positive long tenantId,
+    public ApiResponse<SkillViews.Preview> preview(Authentication auth, @PathVariable @Positive long tenantId,
             @RequestParam MultipartFile archive) throws IOException {
         identity.tenant(identity.current(auth), tenantId, false);
-        return ApiResponse.success(new SkillViews.Content(0, SkillPackages.views(SkillPackages.input(null, null, archive))));
+        return ApiResponse.success(SkillPackages.preview(SkillPackages.input(null, null, archive)));
     }
 
     private <T> T decode(String input, Class<T> type) {

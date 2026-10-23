@@ -16,11 +16,15 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 import io.github.chalmery.loopcraft.skill.dto.SkillViews;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.error.YAMLException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-/** 包仅作为字节处理，不解压到磁盘，不解析 YAML，不执行脚本。 */
+/** 包仅作为字节处理，不解压到磁盘，只读取 frontmatter 作为新建建议，不执行脚本。 */
 public final class SkillPackages {
     public static final int MAX_FILES = 200;
     public static final int MAX_BYTES = 10 * 1024 * 1024;
@@ -100,6 +104,39 @@ public final class SkillPackages {
             }
         }
         return files;
+    }
+
+    /** 仅新建导入使用建议字段；解析失败仍保留文件，交由用户填写基本信息。 */
+    public static SkillViews.Preview preview(Map<String, byte[]> files) {
+        String name = "", description = "";
+        String source = text(files.get("SKILL.md"));
+        if (source != null) {
+            String[] lines = source.replaceFirst("^\\uFEFF", "").split("\\R", -1);
+            if (lines.length > 1 && lines[0].equals("---")) {
+                StringBuilder header = new StringBuilder();
+                for (int i = 1; i < lines.length && header.length() <= 65536; i++) {
+                    if (lines[i].equals("---") || lines[i].equals("...")) {
+                        LoaderOptions options = new LoaderOptions();
+                        options.setAllowDuplicateKeys(false);
+                        options.setMaxAliasesForCollections(0);
+                        options.setNestingDepthLimit(20);
+                        options.setCodePointLimit(65536);
+                        try {
+                            Object parsed = new Yaml(new SafeConstructor(options)).load(header.toString());
+                            if (parsed instanceof Map<?, ?> metadata) {
+                                if (metadata.get("name") instanceof String value) name = value;
+                                if (metadata.get("description") instanceof String value) description = value;
+                            }
+                        } catch (YAMLException error) {
+                            // 非标准 frontmatter 不阻止文件导入，也不改变原始字节。
+                        }
+                        break;
+                    }
+                    header.append(lines[i]).append('\n');
+                }
+            }
+        }
+        return new SkillViews.Preview(0, views(files), name, name, description);
     }
 
     public static String path(String value) {

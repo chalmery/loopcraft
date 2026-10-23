@@ -61,14 +61,19 @@ public class SkillService {
         this.versionMappers = versionMappers; this.tenantMappers = tenantMappers; this.storage = storage; this.bucket = bucket;
     }
 
-    public SkillViews.Page<SkillViews.Summary> list(UserAccount actor, long tenant, int page, int size, String query) {
+    public SkillViews.ListPage list(UserAccount actor, long tenant, int page, int size, String query) {
+        return list(actor, tenant, page, size, query, null);
+    }
+
+    public SkillViews.ListPage list(UserAccount actor, long tenant, int page, int size, String query, String origin) {
         identity.tenant(actor, tenant, false);
+        if (origin != null && !List.of("CUSTOM", "SYSTEM").contains(origin)) throw SkillPackages.invalid("无效的 Skill 来源");
         String q = query == null ? "" : query.trim();
         if (q.length() > 160) throw SkillPackages.invalid("搜索条件过长");
         List<Long> tagged = q.isEmpty() ? List.of() : tags().selectList(Wrappers.<SkillTag>lambdaQuery()
                 .eq(SkillTag::getTenantId, tenant).like(SkillTag::getName, escape(q))).stream().map(SkillTag::getSkillId).distinct().toList();
         Page<Skill> result = skills().selectPage(new Page<>(page, size), Wrappers.<Skill>lambdaQuery()
-                .eq(Skill::getTenantId, tenant).eq(Skill::getDeleted, false)
+                .eq(Skill::getTenantId, tenant).eq(Skill::getDeleted, false).eq(origin != null, Skill::getOrigin, origin)
                 .and(!q.isEmpty(), condition -> condition.like(Skill::getName, escape(q)).or().like(Skill::getSlug, escape(q))
                         .or().like(Skill::getDescription, escape(q)).or(!tagged.isEmpty()).in(!tagged.isEmpty(), Skill::getId, tagged))
                 .orderByDesc(Skill::getUpdatedAt, Skill::getId));
@@ -76,8 +81,19 @@ public class SkillService {
         Map<Long, List<SkillTag>> grouped = ids.isEmpty() ? Map.of() : tags().selectList(Wrappers.<SkillTag>lambdaQuery()
                 .eq(SkillTag::getTenantId, tenant).in(SkillTag::getSkillId, ids).orderByAsc(SkillTag::getId))
                 .stream().collect(Collectors.groupingBy(SkillTag::getSkillId));
-        return new SkillViews.Page<>(result.getRecords().stream().map(s -> view(s, grouped.getOrDefault(s.getId(), List.of())
-                .stream().map(SkillTag::getName).toList())).toList(), result.getTotal(), page, size);
+        // 一次读取本页各 Skill 的最新版本，避免逐条查库或加载所有历史版本。
+        Map<Long, SkillVersion> latest = ids.isEmpty() ? Map.of() : versions().selectList(Wrappers.<SkillVersion>lambdaQuery()
+                .eq(SkillVersion::getTenantId, tenant).and(condition -> {
+                    for (Skill skill : result.getRecords()) condition.or().nested(pair -> pair
+                            .eq(SkillVersion::getSkillId, skill.getId()).eq(SkillVersion::getNumber, skill.getLatestVersion()));
+                })).stream().collect(Collectors.toMap(SkillVersion::getSkillId, value -> value));
+        long custom = skills().selectCount(Wrappers.<Skill>lambdaQuery().eq(Skill::getTenantId, tenant)
+                .eq(Skill::getDeleted, false).eq(Skill::getOrigin, "CUSTOM"));
+        long system = skills().selectCount(Wrappers.<Skill>lambdaQuery().eq(Skill::getTenantId, tenant)
+                .eq(Skill::getDeleted, false).eq(Skill::getOrigin, "SYSTEM"));
+        return new SkillViews.ListPage(result.getRecords().stream().map(s -> view(s, grouped.getOrDefault(s.getId(), List.of())
+                .stream().map(SkillTag::getName).toList(), latest.get(s.getId()))).toList(), result.getTotal(), page, size,
+                new SkillViews.Counts(custom, system));
     }
 
     public SkillViews.Summary detail(UserAccount actor, long tenant, long id) { return view(require(actor, tenant, id, false)); }
@@ -217,8 +233,15 @@ public class SkillService {
                 .orderByAsc(SkillTag::getId)).stream().map(SkillTag::getName).toList());
     }
     private SkillViews.Summary view(Skill skill, List<String> tags) {
+        return view(skill, tags, versions().selectOne(Wrappers.<SkillVersion>lambdaQuery()
+                .eq(SkillVersion::getTenantId, skill.getTenantId()).eq(SkillVersion::getSkillId, skill.getId())
+                .eq(SkillVersion::getNumber, skill.getLatestVersion())));
+    }
+    private SkillViews.Summary view(Skill skill, List<String> tags, SkillVersion latest) {
+        if (latest == null) throw conflict("最新内容版本不存在，请刷新后重试");
         return new SkillViews.Summary(skill.getId(), skill.getSlug(), skill.getName(), skill.getDescription(), tags,
-                skill.getOrigin(), skill.getEnabled(), skill.getLatestVersion(), skill.getRevision(), skill.getUpdatedAt());
+                skill.getOrigin(), skill.getEnabled(), skill.getLatestVersion(), skill.getRevision(), skill.getUpdatedAt(),
+                latest.getFileCount(), latest.getCreatedAt());
     }
     private SkillViews.Version versionView(SkillVersion version) {
         return new SkillViews.Version(version.getNumber(), version.getFileCount(), version.getTotalBytes(), version.getCreatedBy(), version.getCreatedAt());

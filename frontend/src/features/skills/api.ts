@@ -11,6 +11,8 @@ export type Skill = {
   latestVersion: number
   revision: number
   updatedAt: string
+  fileCount: number
+  contentUpdatedAt: string
 }
 export type Version = {
   number: number
@@ -21,7 +23,10 @@ export type Version = {
 }
 export type SkillFile = { path: string; size: number; text: string | null; base64: string | null }
 export type Content = { number: number; files: SkillFile[] }
+export type PackagePreview = Content & { slug: string; name: string; description: string }
 export type Page<T> = { records: T[]; total: number; page: number; size: number }
+export type SkillOrigin = 'all' | 'CUSTOM' | 'SYSTEM'
+export type SkillPage = Page<Skill> & { counts: { custom: number; system: number } }
 export type Metadata = Pick<Skill, 'name' | 'description' | 'tags' | 'enabled' | 'revision'>
 const record = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
 const natural = (v: unknown): v is number =>
@@ -40,7 +45,9 @@ export const isSkill: Validator<Skill> = (v): v is Skill =>
   typeof v.enabled === 'boolean' &&
   natural(v.latestVersion) &&
   natural(v.revision) &&
-  typeof v.updatedAt === 'string'
+  typeof v.updatedAt === 'string' &&
+  natural(v.fileCount) &&
+  typeof v.contentUpdatedAt === 'string'
 const isVersion: Validator<Version> = (v): v is Version =>
   record(v) &&
   natural(v.number) &&
@@ -57,6 +64,12 @@ const isFile: Validator<SkillFile> = (v): v is SkillFile =>
     (v.text === null && typeof v.base64 === 'string'))
 export const isContent: Validator<Content> = (v): v is Content =>
   record(v) && natural(v.number) && Array.isArray(v.files) && v.files.every(isFile)
+const isPackagePreview: Validator<PackagePreview> = (v): v is PackagePreview =>
+  record(v) &&
+  typeof v.slug === 'string' &&
+  typeof v.name === 'string' &&
+  typeof v.description === 'string' &&
+  isContent(v)
 function pageOf<T>(validator: Validator<T>): Validator<Page<T>> {
   return (v): v is Page<T> =>
     record(v) &&
@@ -68,6 +81,12 @@ function pageOf<T>(validator: Validator<T>): Validator<Page<T>> {
     natural(v.size) &&
     v.size > 0
 }
+export const isSkillPage: Validator<SkillPage> = (v): v is SkillPage =>
+  record(v) &&
+  record(v.counts) &&
+  natural(v.counts.custom) &&
+  natural(v.counts.system) &&
+  pageOf(isSkill)(v)
 const path = (tenant: number, id?: number) =>
   `/tenants/${tenant}/skills${id === undefined ? '' : `/${id}`}`
 function form(input: object, files: SkillFile[]) {
@@ -83,8 +102,11 @@ function form(input: object, files: SkillFile[]) {
   return { method: 'POST', body: data }
 }
 export const skillApi = {
-  list: (tenant: number, page: number, q: string) =>
-    request(`${path(tenant)}?page=${page}&size=12&q=${encodeURIComponent(q)}`, pageOf(isSkill)),
+  list: (tenant: number, page: number, q: string, origin: SkillOrigin = 'all') =>
+    request(
+      `${path(tenant)}?page=${page}&size=12&q=${encodeURIComponent(q)}${origin === 'all' ? '' : `&origin=${origin}`}`,
+      isSkillPage,
+    ),
   detail: (tenant: number, id: number) => request(path(tenant, id), isSkill),
   create: (
     tenant: number,
@@ -104,6 +126,9 @@ export const skillApi = {
   preview: (tenant: number, archive: File) => {
     const data = new FormData()
     data.set('archive', archive)
-    return request(`${path(tenant)}/package-preview`, isContent, { method: 'POST', body: data })
+    return request(`${path(tenant)}/package-preview`, isPackagePreview, {
+      method: 'POST',
+      body: data,
+    })
   },
 }

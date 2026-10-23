@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
+import { ArrowLeft } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -132,14 +134,21 @@ export function SkillDetail({
     }
   }
   return (
-    <div className="space-y-4">
+    <Tabs
+      value={tab}
+      onValueChange={(value) => {
+        if ((value === 'info' || value === 'content') && value !== tab)
+          navigate(() => setTab(value))
+      }}
+      className="space-y-6"
+    >
       <Button variant="ghost" size="sm" disabled={busy} onClick={() => navigate(onBack)}>
-        返回 Skill 列表
+        <ArrowLeft aria-hidden /> Skill 列表
       </Button>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold break-words">{skill.name}</h1>
-          <p className="mt-1 text-xs break-all text-muted-foreground">{skill.slug}</p>
+          <h1 className="text-2xl font-semibold break-words">{skill.name}</h1>
+          <p className="mt-2 font-mono text-xs break-all text-muted-foreground">{skill.slug}</p>
         </div>
         <div className="flex gap-2">
           <Badge variant="outline">{skill.origin === 'SYSTEM' ? '系统内置' : '租户自建'}</Badge>
@@ -153,26 +162,28 @@ export function SkillDetail({
           系统内置 Skill 仅租户负责人和平台管理员可管理。
         </p>
       )}
-      <div className="flex gap-2 border-b border-border pb-2">
-        <Button
-          variant={tab === 'info' ? 'secondary' : 'ghost'}
-          onClick={() => navigate(() => setTab('info'))}
-        >
+      <TabsList aria-label="Skill 详情">
+        <TabsTrigger value="info" disabled={busy}>
           基本信息
-        </Button>
-        <Button
-          variant={tab === 'content' ? 'secondary' : 'ghost'}
-          onClick={() => navigate(() => setTab('content'))}
-        >
-          内容
-        </Button>
-      </div>
+        </TabsTrigger>
+        <TabsTrigger value="content" disabled={busy}>
+          文件与版本
+        </TabsTrigger>
+      </TabsList>
       {tab === 'info' ? (
-        <div className="space-y-4">
-          <Card density="compact">
-            <form onSubmit={(e) => void save(e)} className="space-y-4">
+        <TabsContent
+          value="info"
+          className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,1fr)]"
+        >
+          <Card>
+            <form onSubmit={(e) => void save(e)} className="space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle>基本信息</CardTitle>
+                <div>
+                  <CardTitle>基本信息</CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    管理 Skill 在工作区中的展示信息。
+                  </p>
+                </div>
                 {canManage && (
                   <div className="flex gap-2">
                     <DeleteRecord
@@ -188,9 +199,12 @@ export function SkillDetail({
                   </div>
                 )}
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-5 sm:grid-cols-2">
                 <Label className="grid gap-2">
                   显示名称
+                  <span className="text-xs font-normal text-muted-foreground">
+                    在工作区中展示的名称
+                  </span>
                   <Input
                     required
                     maxLength={80}
@@ -204,6 +218,9 @@ export function SkillDetail({
                 </Label>
                 <Label className="grid gap-2">
                   Skill 标识
+                  <span className="text-xs font-normal text-muted-foreground">
+                    创建后固定，用于唯一识别
+                  </span>
                   <Input value={skill.slug} readOnly />
                 </Label>
                 <Label className="grid gap-2">
@@ -233,7 +250,7 @@ export function SkillDetail({
                   描述
                   <Textarea
                     id="skill-detail-description"
-                    rows={2}
+                    rows={4}
                     maxLength={1000}
                     required
                     value={description}
@@ -266,13 +283,14 @@ export function SkillDetail({
               )}
             </form>
           </Card>
-          <Card density="compact">
+          <Card>
             <CardTitle>
-              版本列表{' '}
+              内容版本{' '}
               <span className="text-xs font-normal text-muted-foreground">
                 {history?.total ?? 0} 个版本
               </span>
             </CardTitle>
+            <p className="text-xs text-muted-foreground">每次保存内容生成一个版本</p>
             {historyError && (
               <p role="alert" className="text-sm text-danger">
                 {historyError}{' '}
@@ -298,7 +316,7 @@ export function SkillDetail({
                       {v.number === skill.latestVersion && <Badge variant="outline">最新</Badge>}
                     </TableCell>
                     <TableCell>{v.fileCount}</TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="text-xs whitespace-nowrap">
                       {new Date(v.createdAt).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right">
@@ -330,26 +348,28 @@ export function SkillDetail({
               />
             )}
           </Card>
-        </div>
+        </TabsContent>
       ) : (
-        <SkillContent
-          key={`${skill.id}:${number}`}
-          tenantId={tenantId}
-          skillId={skill.id}
-          number={number}
-          latest={skill.latestVersion}
-          canManage={canManage}
-          onDirtyChange={setContentDirty}
-          onSaved={(saved) => {
-            setNumber(saved)
-            void skillApi
-              .detail(tenantId, skill.id)
-              .then(onUpdated)
-              .catch((cause: unknown) =>
-                setError(cause instanceof Error ? cause.message : '基本信息刷新失败'),
-              )
-          }}
-        />
+        <TabsContent value="content">
+          <SkillContent
+            key={`${skill.id}:${number}`}
+            tenantId={tenantId}
+            skillId={skill.id}
+            number={number}
+            latest={skill.latestVersion}
+            canManage={canManage}
+            onDirtyChange={setContentDirty}
+            onSaved={(saved) => {
+              setNumber(saved)
+              void skillApi
+                .detail(tenantId, skill.id)
+                .then(onUpdated)
+                .catch((cause: unknown) =>
+                  setError(cause instanceof Error ? cause.message : '基本信息刷新失败'),
+                )
+            }}
+          />
+        </TabsContent>
       )}
       <AlertDialog
         open={pending !== null}
@@ -377,6 +397,6 @@ export function SkillDetail({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </Tabs>
   )
 }

@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -12,6 +11,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { useSubmitting } from '@/lib/useSubmitting'
 
 export function DeleteRecord({
   name,
@@ -26,38 +26,22 @@ export function DeleteRecord({
   onDelete: () => Promise<unknown>
   onDeleted: () => void
 }) {
+  const submit = useSubmitting()
   const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const active = useRef(true)
-  const submitting = useRef(false)
-  useEffect(() => {
-    active.current = true
-    return () => {
-      active.current = false
-    }
-  }, [])
   async function confirm() {
-    if (submitting.current) return
-    submitting.current = true
-    setBusy(true)
-    try {
+    await submit.run(async () => {
       await onDelete()
-      if (!active.current) return
+      if (!submit.active.current) return
       setOpen(false)
-      toast.success('删除成功')
       onDeleted()
-    } catch (cause) {
-      if (active.current) toast.error(cause instanceof Error ? cause.message : '删除失败')
-    } finally {
-      submitting.current = false
-      if (active.current) setBusy(false)
-    }
+      return '删除成功'
+    }, '删除失败')
   }
   return (
     <AlertDialog
       open={open}
       onOpenChange={(next) => {
-        if (!busy) {
+        if (!submit.busy) {
           setOpen(next)
         }
       }}
@@ -73,16 +57,16 @@ export function DeleteRecord({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+          <AlertDialogCancel disabled={submit.busy}>取消</AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
-            disabled={busy}
+            disabled={submit.busy}
             onClick={(event) => {
               event.preventDefault()
               void confirm()
             }}
           >
-            {busy ? '删除中…' : '确认删除'}
+            {submit.busy ? '删除中…' : '确认删除'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

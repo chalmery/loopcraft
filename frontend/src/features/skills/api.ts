@@ -5,6 +5,7 @@ import {
   isPageOf as pageOf,
 } from '@/lib/contracts'
 import { isNull, request, type Validator } from '@/lib/api'
+import { queryString } from '@/lib/utils'
 
 export type Skill = {
   id: number
@@ -96,7 +97,12 @@ function form(input: object, files: SkillFile[]) {
 export const skillApi = {
   list: (tenantId: number, page: number, q: string, origin: SkillOrigin = 'all') =>
     request(
-      `${path(tenantId)}?page=${page}&size=12&q=${encodeURIComponent(q)}${origin === 'all' ? '' : `&origin=${origin}`}`,
+      `${path(tenantId)}${queryString({
+        page,
+        size: 12,
+        q,
+        origin: origin === 'all' ? undefined : origin,
+      })}`,
       isSkillPage,
     ),
   detail: (tenantId: number, id: number) => request(path(tenantId, id), isSkill),
@@ -110,7 +116,7 @@ export const skillApi = {
   delete: (tenantId: number, skill: Skill) =>
     request(`${path(tenantId, skill.id)}?revision=${skill.revision}`, isNull, { method: 'DELETE' }),
   versions: (tenantId: number, id: number, page: number) =>
-    request(`${path(tenantId, id)}/versions?page=${page}&size=20`, pageOf(isVersion)),
+    request(`${path(tenantId, id)}/versions${queryString({ page, size: 20 })}`, pageOf(isVersion)),
   content: (tenantId: number, id: number, number: number) =>
     request(`${path(tenantId, id)}/versions/${number}`, isContent),
   save: (

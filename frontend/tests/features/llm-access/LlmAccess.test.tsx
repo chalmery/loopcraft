@@ -86,6 +86,10 @@ test('筛选隐藏的现存连接保留详情，临时请求失败也不当作�
     )
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })
+  // 搜索输入有防抖，等待防抖窗口过后列表按关键词重新请求。
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 320))
+  })
   assert.match(container.textContent ?? '', /没有匹配的连接/)
   assert.ok(container.querySelector('[aria-label="连接详情"]'))
   detailFailure = true

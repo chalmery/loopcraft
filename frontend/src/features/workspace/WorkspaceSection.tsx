@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { ErrorState } from '@/components/ErrorState'
+import { PageHeader } from '@/components/PageHeader'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { errorMessage } from '@/lib/errors'
 import type { Member, MemberCandidate, Tenant } from './api'
 import { workspaceApi } from './api'
 import type { User } from '@/features/auth/api'
@@ -51,37 +54,35 @@ export function WorkspaceSection({
   const [editing, setEditing] = useState(false)
   if (!tenant)
     return (
-      <div className="flex min-h-[55vh] flex-col items-center justify-center text-center [&_h1]:mb-2 [&_h1]:text-2xl [&_h1]:font-semibold [&_p]:max-w-[440px] [&_p]:text-secondary">
+      <div className="flex min-h-[55vh] flex-col items-center justify-center text-center">
         <span className="mb-4 inline-flex size-12 items-center justify-center rounded-lg bg-accent-soft text-accent">
           <PanelsTopLeft className="size-4" aria-hidden="true" />
         </span>
-        <h1>{tenants.length ? '选择一个工作区' : '还没有工作区'}</h1>
-        <p>
-          {tenants.length
-            ? '从顶部选择工作区，查看成员与设置。'
-            : '请联系平台管理员为你分配工作区。'}
+        <h1 className="mb-2 text-2xl font-semibold">
+          {tenants.length ? '选择一个租户' : '还没有租户'}
+        </h1>
+        <p className="max-w-[440px] text-secondary">
+          {tenants.length ? '从顶部选择租户，查看成员与设置。' : '请联系平台管理员为你分配租户。'}
         </p>
       </div>
     )
   const owner = tenant.myRole === 'OWNER'
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-4 pb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_p:not(.eyebrow)]:text-secondary">
-        <div>
-          <h1>{tenant.name}</h1>
-          <p className="mt-1">工作区与成员</p>
-        </div>
-        <Badge>{owner ? '负责人' : '成员'}</Badge>
-      </div>
-      <Card className="flex-col items-start justify-between gap-4 p-4 md:p-4 lg:flex-row lg:items-center [&_h2]:text-sm [&_h2]:font-semibold [&>div]:flex [&>div]:flex-col [&>div]:gap-2">
-        <div>
-          <h2>工作区资料</h2>
-          <p className="text-sm text-muted-foreground">工作区名称对所有成员可见。</p>
+      <PageHeader
+        title={tenant.name}
+        description="租户设置"
+        badge={<Badge>{owner ? '负责人' : '成员'}</Badge>}
+      />
+      <Card className="flex-col items-start justify-between gap-4 p-4 md:p-4 lg:flex-row lg:items-center">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold">租户资料</h2>
+          <p className="text-sm text-muted-foreground">租户名称对所有成员可见。</p>
         </div>
         {owner ? (
           editing ? (
             <Form
-              className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap [&_input]:w-full lg:[&_input]:w-[min(260px,24vw)]"
+              className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap"
               onSubmit={(event) => {
                 event.preventDefault()
                 const data = new FormData(event.currentTarget)
@@ -91,11 +92,12 @@ export function WorkspaceSection({
               }}
             >
               <Input
-                aria-label="工作区名称"
+                aria-label="租户名称"
                 name="name"
                 defaultValue={tenant.name}
                 maxLength={100}
                 required
+                className="w-full lg:w-[min(260px,24vw)]"
               />
               <Button variant="default" type="submit" disabled={busy}>
                 保存
@@ -113,13 +115,11 @@ export function WorkspaceSection({
           <span className="text-xs text-muted-foreground">仅负责人可修改</span>
         )}
       </Card>
-      <Card className="gap-2 p-4 md:p-4 [&_h2]:text-sm [&_h2]:font-semibold">
-        <div className="flex flex-col items-start justify-between gap-3 pb-1 lg:flex-row lg:items-center [&>div]:flex [&>div]:flex-col [&>div]:gap-2">
-          <div>
-            <h2>成员</h2>
-            <p className="text-sm text-muted-foreground">
-              {members.length} 位成员可以访问此工作区。
-            </p>
+      <Card className="gap-2 p-4 md:p-4">
+        <div className="flex flex-col items-start justify-between gap-3 pb-1 lg:flex-row lg:items-center">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-sm font-semibold">成员</h2>
+            <p className="text-sm text-muted-foreground">{members.length} 位成员可以访问此租户。</p>
           </div>
           {canManageMembers && (
             <AddMemberForm tenantId={tenant.id} members={members} busy={busy} onAdd={onAddMember} />
@@ -134,12 +134,14 @@ export function WorkspaceSection({
               <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-surface-subtle text-sm font-semibold text-secondary">
                 {member.displayName.slice(0, 1)}
               </span>
-              <div className="flex min-w-0 flex-1 flex-col gap-1 [&_small]:ml-2 [&_small]:text-xs [&_small]:font-normal [&_small]:text-muted-foreground [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:truncate [&_strong]:text-sm [&_strong]:font-medium">
-                <strong>
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <strong className="truncate text-sm font-medium">
                   {member.displayName}
-                  {member.userId === user.id && <small>你</small>}
+                  {member.userId === user.id && (
+                    <small className="ml-2 text-xs font-normal text-muted-foreground">你</small>
+                  )}
                 </strong>
-                <span>@{member.username}</span>
+                <span className="text-xs text-muted-foreground">@{member.username}</span>
               </div>
               <Badge variant={member.role === 'OWNER' ? 'default' : 'secondary'}>
                 {member.role === 'OWNER' ? '负责人' : '成员'}
@@ -151,7 +153,7 @@ export function WorkspaceSection({
           ))}
         </ul>
         {!canManageMembers && (
-          <p className="mt-2 text-xs text-muted-foreground">只有工作区负责人可以管理成员。</p>
+          <p className="mt-2 text-xs text-muted-foreground">只有租户负责人可以管理成员。</p>
         )}
       </Card>
     </div>
@@ -187,7 +189,7 @@ function AddMemberForm({
       })
       .catch((cause: unknown) => {
         if (active) {
-          setError(cause instanceof Error ? cause.message : '加载可添加账号失败')
+          setError(errorMessage(cause, '加载可添加账号失败'))
           setLoading(false)
         }
       })
@@ -234,21 +236,14 @@ function AddMemberForm({
         </Button>
       </Form>
       {error && (
-        <div role="alert" className="flex items-center gap-2 text-xs text-danger">
-          <span>{error}</span>
-          <Button
-            variant="link"
-            size="sm"
-            disabled={loading}
-            onClick={() => {
-              setLoading(true)
-              setError('')
-              setRevision((value) => value + 1)
-            }}
-          >
-            重试
-          </Button>
-        </div>
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            setLoading(true)
+            setError('')
+            setRevision((value) => value + 1)
+          }}
+        />
       )}
     </div>
   )
@@ -274,7 +269,7 @@ function RemoveMemberButton({
         <AlertDialogHeader>
           <AlertDialogTitle>移除成员</AlertDialogTitle>
           <AlertDialogDescription>
-            确定从工作区移除 {member.displayName}？移除后，该成员将无法访问此工作区。
+            确定从租户移除 {member.displayName}？移除后，该成员将无法访问此租户。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

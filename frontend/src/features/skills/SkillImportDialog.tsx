@@ -1,57 +1,39 @@
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useEffect, useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { useSubmitting } from '@/lib/useSubmitting'
 import { skillApi, type PackagePreview } from './api'
 
-type SkillImportDialogProps = {
-  tenantId: number
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onImported: (preview: PackagePreview) => void
-  onWorkingChange: (working: boolean) => void
-}
-
-export function SkillImportDialog(props: SkillImportDialogProps) {
-  return <SkillImportDialogState key={props.tenantId} {...props} />
-}
-
-function SkillImportDialogState({
+export function SkillImportDialog({
   tenantId,
   open,
   onOpenChange,
   onImported,
   onWorkingChange,
-}: SkillImportDialogProps) {
-  const active = useRef(true)
-  const submitting = useRef(false)
-  useEffect(() => {
-    active.current = true
-    return () => {
-      active.current = false
-    }
-  }, [])
+}: {
+  tenantId: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onImported: (preview: PackagePreview) => void
+  onWorkingChange: (working: boolean) => void
+}) {
+  const submit = useSubmitting()
   const input = useRef<HTMLInputElement>(null)
   const [archive, setArchive] = useState<File | null>(null)
-  const [busy, setBusy] = useState(false)
-  async function submit() {
-    if (!archive || submitting.current) return
-    submitting.current = true
-    setBusy(true)
-
+  async function submitArchive() {
+    if (!archive) return
     onWorkingChange(true)
     try {
-      const preview = await skillApi.preview(tenantId, archive)
-      if (!active.current) return
-      onImported(preview)
-      onOpenChange(false)
-    } catch (cause) {
-      if (active.current) toast.error(cause instanceof Error ? cause.message : '压缩包读取失败')
+      await submit.run(async () => {
+        const preview = await skillApi.preview(tenantId, archive)
+        if (!submit.active.current) return
+        onImported(preview)
+        onOpenChange(false)
+      }, '压缩包读取失败')
     } finally {
-      submitting.current = false
-      if (active.current) setBusy(false)
       onWorkingChange(false)
     }
   }
@@ -59,16 +41,16 @@ function SkillImportDialogState({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!busy) onOpenChange(next)
+        if (!submit.busy) onOpenChange(next)
       }}
     >
       <DialogContent
         className="max-w-lg"
         onEscapeKeyDown={(e) => {
-          if (busy) e.preventDefault()
+          if (submit.busy) e.preventDefault()
         }}
         onPointerDownOutside={(e) => {
-          if (busy) e.preventDefault()
+          if (submit.busy) e.preventDefault()
         }}
       >
         <DialogTitle className="text-base font-semibold">导入 Skill</DialogTitle>
@@ -89,7 +71,7 @@ function SkillImportDialogState({
             accept=".zip"
             aria-label="Skill ZIP 文件"
             className="hidden"
-            disabled={busy}
+            disabled={submit.busy}
             onChange={(e) => {
               const file = e.target.files?.[0]
               e.target.value = ''
@@ -104,7 +86,7 @@ function SkillImportDialogState({
               setArchive(file)
             }}
           />
-          <Button variant="outline" disabled={busy} onClick={() => input.current?.click()}>
+          <Button variant="outline" disabled={submit.busy} onClick={() => input.current?.click()}>
             {archive ? '重新选择文件' : '选择 ZIP 文件'}
           </Button>
           {archive && (
@@ -114,11 +96,15 @@ function SkillImportDialogState({
           )}
         </div>
         <div className="flex justify-end gap-2">
-          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+          <Button variant="outline" disabled={submit.busy} onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button disabled={!archive || busy} onClick={() => void submit()}>
-            {busy ? '正在解析…' : '导入并继续'}
+          <Button
+            loading={submit.busy}
+            disabled={!archive || submit.busy}
+            onClick={() => void submitArchive()}
+          >
+            {submit.busy ? '正在解析…' : '导入并继续'}
           </Button>
         </div>
       </DialogContent>

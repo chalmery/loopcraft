@@ -1,10 +1,9 @@
 import type { NextConfig } from 'next'
-
-const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8080'
+import { BACKEND_URL } from './src/lib/backend'
 
 const nextConfig: NextConfig = {
   async rewrites() {
-    return [{ source: '/api/:path*', destination: `${backendUrl}/api/:path*` }]
+    return [{ source: '/api/:path*', destination: `${BACKEND_URL}/api/:path*` }]
   },
 }
 

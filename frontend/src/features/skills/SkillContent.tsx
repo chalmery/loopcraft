@@ -1,25 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { ErrorState } from '@/components/ErrorState'
+import { errorMessage } from '@/lib/errors'
+import { useSubmitting } from '@/lib/useSubmitting'
 import { skillApi, type Content, type SkillFile } from './api'
 import { SkillFiles } from './SkillFiles'
 
-type SkillContentProps = {
-  tenantId: number
-  skillId: number
-  number: number
-  latest: number
-  canManage: boolean
-  onSaved: (number: number) => void
-  onDirtyChange: (dirty: boolean) => void
-  onPendingChange?: (pending: boolean) => void
-}
-
-export function SkillContent(props: SkillContentProps) {
-  return <SkillContentState key={`${props.tenantId}:${props.skillId}:${props.number}`} {...props} />
-}
-
-function SkillContentState({
+export function SkillContent({
   tenantId,
   skillId,
   number,
@@ -28,18 +15,19 @@ function SkillContentState({
   onSaved,
   onDirtyChange,
   onPendingChange,
-}: SkillContentProps) {
-  const submitting = useRef(false)
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
+}: {
+  tenantId: number
+  skillId: number
+  number: number
+  latest: number
+  canManage: boolean
+  onSaved: (number: number) => void
+  onDirtyChange: (dirty: boolean) => void
+  onPendingChange?: (pending: boolean) => void
+}) {
+  const submit = useSubmitting()
   const [content, setContent] = useState<Content | null>(null)
   const [draft, setDraft] = useState<SkillFile[] | null>(null)
-  const [busy, setBusy] = useState(false)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
@@ -54,7 +42,7 @@ function SkillContentState({
         }
       },
       (cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : '内容加载失败')
+        if (active) setError(errorMessage(cause, '内容加载失败'))
       },
     )
     return () => {
@@ -62,6 +50,7 @@ function SkillContentState({
     }
   }, [tenantId, skillId, number, reload])
   const dirty = draft !== null
+  const busy = submit.busy
   useEffect(() => {
     onPendingChange?.(busy || working)
     return () => onPendingChange?.(false)
@@ -71,23 +60,15 @@ function SkillContentState({
     return () => onDirtyChange(false)
   }, [dirty, onDirtyChange])
   async function save() {
-    if (!draft || submitting.current || working) return
-    if (submitting.current) return
-    submitting.current = true
-    setBusy(true)
-    setError('')
-    try {
+    if (!draft || working) return
+    await submit.run(async () => {
       const saved = await skillApi.save(tenantId, skillId, number, requestId, draft)
-      if (!mounted.current) return
+      // 组件已按新版本重建时，旧保存结果不再落地。
+      if (!submit.active.current) return
       setDraft(null)
-      toast.success(`v${saved.number} 已保存`)
       onSaved(saved.number)
-    } catch (cause) {
-      if (mounted.current) toast.error(cause instanceof Error ? cause.message : '版本保存失败')
-    } finally {
-      submitting.current = false
-      if (mounted.current) setBusy(false)
-    }
+      return `v${saved.number} 已保存`
+    }, '版本保存失败')
   }
   return (
     <div className="space-y-3">
@@ -102,7 +83,7 @@ function SkillContentState({
                 <Button variant="outline" disabled={busy || working} onClick={() => setDraft(null)}>
                   放弃编辑
                 </Button>
-                <Button disabled={busy || working} onClick={() => void save()}>
+                <Button loading={busy} disabled={busy || working} onClick={() => void save()}>
                   {busy ? '正在保存…' : `保存为 v${latest + 1}`}
                 </Button>
               </>
@@ -120,16 +101,11 @@ function SkillContentState({
         )}
       </div>
       {error && (
-        <div role="alert" className="flex items-center gap-3 text-sm text-danger">
-          <span>{error}</span>
-          {!content && (
-            <Button variant="outline" onClick={() => setReload((n) => n + 1)}>
-              重试
-            </Button>
-          )}
-        </div>
+        <ErrorState message={error} onRetry={content ? undefined : () => setReload((n) => n + 1)} />
       )}
-      {!content && !error && <output>正在加载文件…</output>}
+      {!content && !error && (
+        <output className="text-sm text-muted-foreground">正在加载文件…</output>
+      )}
       {content && (
         <SkillFiles
           tenantId={tenantId}

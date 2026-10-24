@@ -104,7 +104,7 @@ export function SkillFiles({
           </p>
         </div>
       )}
-      {uploading && <output>正在处理文件…</output>}
+      {uploading && <output className="text-sm text-muted-foreground">正在处理文件…</output>}
       <div className="grid min-w-0 overflow-hidden rounded-lg border border-border bg-surface md:grid-cols-[220px_minmax(0,1fr)]">
         <div
           className="min-w-0 space-y-1 border-b border-border bg-canvas p-3 md:border-r md:border-b-0"
@@ -179,11 +179,11 @@ export function SkillFiles({
               <span className="text-muted-foreground">{editable ? '编辑中' : '只读'}</span>
             </div>
             {file.text !== null ? (
-              <div key={file.path} className="relative min-w-0">
+              <div key={file.path} className="grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)]">
                 <pre
                   ref={gutter}
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-y-0 left-0 m-0 w-10 overflow-hidden py-6 pr-2 text-right font-mono text-sm leading-6 text-border-strong select-none md:text-xs"
+                  className="m-0 overflow-hidden bg-canvas py-6 pr-2 text-right font-mono text-xs leading-6 text-border-strong select-none"
                 >
                   {Array.from(
                     { length: file.text.split('\n').length },
@@ -197,7 +197,32 @@ export function SkillFiles({
                   onScroll={(e) => {
                     if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop
                   }}
-                  className="min-h-96 resize-y rounded-none border-0 py-6 pr-4 pl-12 font-mono text-sm leading-6 md:text-xs"
+                  onKeyDown={(e) => {
+                    // 编辑区内 Tab 插入缩进，而不是把焦点移出。
+                    if (e.key === 'Tab' && !e.nativeEvent.isComposing && !e.shiftKey) {
+                      e.preventDefault()
+                      const target = e.currentTarget
+                      const start = target.selectionStart
+                      const end = target.selectionEnd
+                      onChange(
+                        files.map((f) =>
+                          f.path === file.path
+                            ? {
+                                ...f,
+                                text: `${f.text?.slice(0, start) ?? ''}  ${f.text?.slice(end) ?? ''}`,
+                                size: new TextEncoder().encode(
+                                  `${f.text?.slice(0, start) ?? ''}  ${f.text?.slice(end) ?? ''}`,
+                                ).length,
+                              }
+                            : f,
+                        ),
+                      )
+                      requestAnimationFrame(() => {
+                        target.selectionStart = target.selectionEnd = start + 2
+                      })
+                    }
+                  }}
+                  className="min-h-96 resize-y rounded-none border-0 py-6 pr-4 font-mono text-xs leading-6"
                   value={file.text}
                   readOnly={!editable}
                   disabled={busy || uploading}

@@ -1,9 +1,7 @@
 node_modules/
 .next/
 out/
-dist/
 bun.lock
 next-env.d.ts
 *.tsbuildinfo
 public/
-src/assets/

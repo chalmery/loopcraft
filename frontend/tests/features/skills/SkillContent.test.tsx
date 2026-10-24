@@ -42,7 +42,9 @@ const changed = (value: boolean) => {
 async function render(number: number, latest: number) {
   await act(async () =>
     root.render(
+      // 真实调用方以 key 区分版本，切换版本即重建组件边界。
       <SkillContent
+        key={`${1}:${number}`}
         tenantId={1}
         skillId={1}
         number={number}

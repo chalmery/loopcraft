@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Form } from '@/components/ui/form'
 import { Button } from '@/components/ui/button'
@@ -13,34 +13,25 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { EditorSheet } from '@/components/EditorSheet'
+import { useSubmitting } from '@/lib/useSubmitting'
 import { llmApi, type Source, type Protocol } from './api'
 
-type ConnectionEditorProps = {
+export function ConnectionEditor({
+  tenantId,
+  source,
+  onClose,
+  onSaved,
+}: {
   tenantId: number
   source: Source | null
   onClose: () => void
   onSaved: (source: Source) => void
-}
-
-export function ConnectionEditor(props: ConnectionEditorProps) {
-  return <ConnectionEditorState key={`${props.tenantId}:${props.source?.id ?? 'new'}`} {...props} />
-}
-
-function ConnectionEditorState({ tenantId, source, onClose, onSaved }: ConnectionEditorProps) {
-  const active = useRef(true)
-  const submitting = useRef(false)
-  useEffect(() => {
-    active.current = true
-    return () => {
-      active.current = false
-    }
-  }, [])
-  const [busy, setBusy] = useState(false)
+}) {
+  const submit = useSubmitting()
   const [protocol, setProtocol] = useState<Protocol>(source?.protocol ?? 'OPENAI_COMPATIBLE')
   const [clear, setClear] = useState(false)
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (submitting.current) return
     const data = new FormData(event.currentTarget)
     const input = {
       name: String(data.get('name')).trim(),
@@ -51,34 +42,27 @@ function ConnectionEditorState({ tenantId, source, onClose, onSaved }: Connectio
       ...(source ? { clearApiKey: clear } : {}),
     }
     if (clear && input.apiKey) {
-      if (active.current) toast.error('更换和清除 API Key 不能同时执行')
+      toast.error('更换和清除 API Key 不能同时执行')
       return
     }
-    submitting.current = true
-    setBusy(true)
-    try {
+    await submit.run(async () => {
       const saved = source
         ? await llmApi.updateSource(tenantId, source.id, input)
         : await llmApi.createSource(tenantId, input)
-      if (!active.current) return
-      toast.success(source ? '连接已更新' : '连接已创建')
+      if (!submit.active.current) return
       onSaved(saved)
-    } catch (cause) {
-      if (active.current) toast.error(cause instanceof Error ? cause.message : '保存失败')
-    } finally {
-      submitting.current = false
-      if (active.current) setBusy(false)
-    }
+      return source ? '连接已更新' : '连接已创建'
+    }, '保存失败')
   }
   return (
     <EditorSheet
       title={source ? '编辑供应商连接' : '新增供应商连接'}
       description="同一供应商可配置多个账号或环境，协议请按接口选择。"
-      busy={busy}
+      busy={submit.busy}
       onClose={onClose}
     >
       <Form onSubmit={(e) => void save(e)} className="grid gap-4 overflow-y-auto px-6 pb-6">
-        <fieldset disabled={busy} className="grid gap-4">
+        <fieldset disabled={submit.busy} className="grid gap-4">
           <Label className="grid gap-2">
             供应商名称
             <Input
@@ -153,11 +137,11 @@ function ConnectionEditorState({ tenantId, source, onClose, onSaved }: Connectio
           )}
         </fieldset>
         <div className="flex justify-end gap-2">
-          <Button variant="outline" disabled={busy} onClick={onClose}>
+          <Button variant="outline" disabled={submit.busy} onClick={onClose}>
             取消
           </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? '保存中…' : '保存连接'}
+          <Button type="submit" loading={submit.busy}>
+            {submit.busy ? '保存中…' : '保存连接'}
           </Button>
         </div>
       </Form>

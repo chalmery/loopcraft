@@ -5,20 +5,24 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { errorMessage } from '@/lib/errors'
+import { useIsMounted } from '@/lib/useIsMounted'
+import { useSubmitting } from '@/lib/useSubmitting'
 import { llmApi, type Candidate, type Source } from './api'
 
-type DiscoveryDialogProps = {
+export function DiscoveryDialog({
+  tenantId,
+  source,
+  onClose,
+  onImported,
+}: {
   tenantId: number
   source: Source
   onClose: () => void
   onImported: () => void
-}
-
-export function DiscoveryDialog(props: DiscoveryDialogProps) {
-  return <DiscoveryDialogState key={`${props.tenantId}:${props.source.id}`} {...props} />
-}
-
-function DiscoveryDialogState({ tenantId, source, onClose, onImported }: DiscoveryDialogProps) {
+}) {
+  const submit = useSubmitting()
+  const active = useIsMounted()
   const [records, setRecords] = useState<Candidate[]>([])
   const [existing, setExisting] = useState(new Set<string>())
   const [selected, setSelected] = useState(new Set<string>())
@@ -26,12 +30,9 @@ function DiscoveryDialogState({ tenantId, source, onClose, onImported }: Discove
   const [cursor, setCursor] = useState<string | null>(null)
   const [supported, setSupported] = useState(true)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const active = useRef(true)
   const visited = useRef(new Set<string>())
   useEffect(() => {
-    active.current = true
     let stale = false
     void Promise.all([
       llmApi.discover(tenantId, source.id),
@@ -46,14 +47,13 @@ function DiscoveryDialogState({ tenantId, source, onClose, onImported }: Discove
         }
       })
       .catch((cause: unknown) => {
-        if (!stale) setError(cause instanceof Error ? cause.message : '查询失败')
+        if (!stale) setError(errorMessage(cause, '查询失败'))
       })
       .finally(() => {
         if (!stale) setLoading(false)
       })
     return () => {
       stale = true
-      active.current = false
     }
   }, [tenantId, source.id])
   async function loadMore(restart = false) {
@@ -88,31 +88,23 @@ function DiscoveryDialogState({ tenantId, source, onClose, onImported }: Discove
       setSupported(result.supported)
       setExisting(ids)
     } catch (cause) {
-      if (active.current) toast.error(cause instanceof Error ? cause.message : '查询失败')
+      if (active.current) toast.error(errorMessage(cause, '查询失败'))
     } finally {
       if (active.current) setLoading(false)
     }
   }
   async function save() {
-    if (saving || selected.size === 0) return
-    setSaving(true)
-    setError('')
-    try {
+    if (selected.size === 0) return
+    await submit.run(async () => {
       const result = await llmApi.importModels(
         tenantId,
         source.id,
         records.filter((item) => selected.has(item.modelId) && !existing.has(item.modelId)),
       )
-      if (!active.current) return
-      toast.success(
-        `已添加 ${result.created.length} 个模型，跳过 ${result.skippedModelIds.length} 个已有模型`,
-      )
+      if (!submit.active.current) return
       onImported()
-    } catch (cause) {
-      if (active.current) toast.error(cause instanceof Error ? cause.message : '导入失败')
-    } finally {
-      if (active.current) setSaving(false)
-    }
+      return `已添加 ${result.created.length} 个模型，跳过 ${result.skippedModelIds.length} 个已有模型`
+    }, '导入失败')
   }
   const filtered = records.filter((item) =>
     `${item.name} ${item.modelId}`.toLowerCase().includes(query.toLowerCase()),
@@ -121,7 +113,7 @@ function DiscoveryDialogState({ tenantId, source, onClose, onImported }: Discove
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !saving) onClose()
+        if (!open && !submit.busy) onClose()
       }}
     >
       <DialogContent
@@ -159,7 +151,7 @@ function DiscoveryDialogState({ tenantId, source, onClose, onImported }: Discove
             >
               <Checkbox
                 disabled={
-                  saving ||
+                  submit.busy ||
                   existing.has(item.modelId) ||
                   (!selected.has(item.modelId) && selected.size >= 100)
                 }
@@ -194,7 +186,7 @@ function DiscoveryDialogState({ tenantId, source, onClose, onImported }: Discove
           <div className="flex gap-2">
             <Button
               variant="outline"
-              disabled={loading || saving}
+              disabled={loading || submit.busy}
               onClick={() => void loadMore(true)}
             >
               重新查询
@@ -202,7 +194,7 @@ function DiscoveryDialogState({ tenantId, source, onClose, onImported }: Discove
             {cursor && (
               <Button
                 variant="outline"
-                disabled={loading || saving || records.length >= 2000}
+                disabled={loading || submit.busy || records.length >= 2000}
                 onClick={() => void loadMore()}
               >
                 加载更多
@@ -210,11 +202,15 @@ function DiscoveryDialogState({ tenantId, source, onClose, onImported }: Discove
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" disabled={saving} onClick={onClose}>
+            <Button variant="outline" disabled={submit.busy} onClick={onClose}>
               关闭
             </Button>
-            <Button disabled={loading || saving || selected.size === 0} onClick={() => void save()}>
-              {saving ? '添加中…' : `添加所选 (${selected.size})`}
+            <Button
+              loading={submit.busy}
+              disabled={loading || submit.busy || selected.size === 0}
+              onClick={() => void save()}
+            >
+              {submit.busy ? '添加中…' : `添加所选 (${selected.size})`}
             </Button>
           </div>
         </div>

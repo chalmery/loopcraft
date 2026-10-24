@@ -17,17 +17,15 @@ export function ProfileSection({
 }) {
   return (
     <div className="flex max-w-[680px] flex-col gap-4">
-      <div className="flex items-start justify-between gap-4 pt-2 pb-4 [&_h1]:mb-2 [&_h1]:text-2xl [&_h1]:font-semibold [&_p:not(.eyebrow)]:text-secondary">
+      <div className="flex items-start justify-between gap-4 pt-2 pb-4">
         <div>
-          <p className="eyebrow mb-2 text-xs font-semibold tracking-wide text-muted-foreground">
-            ACCOUNT
-          </p>
-          <h1>个人设置</h1>
-          <p>更新你的显示名称或登录密码。</p>
+          <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">ACCOUNT</p>
+          <h1 className="mb-2 text-2xl font-semibold">个人设置</h1>
+          <p className="text-secondary">更新你的显示名称或登录密码。</p>
         </div>
       </div>
-      <Card className="[&_h2]:text-base [&_h2]:font-semibold">
-        <h2>个人资料</h2>
+      <Card>
+        <h2 className="text-base font-semibold">个人资料</h2>
         <p className="text-sm text-muted-foreground">
           账号名 <strong className="ml-1 font-medium text-secondary">@{user.username}</strong>
         </p>
@@ -45,8 +43,8 @@ export function ProfileSection({
           </Button>
         </Form>
       </Card>
-      <Card className="[&_h2]:text-base [&_h2]:font-semibold">
-        <h2>修改密码</h2>
+      <Card>
+        <h2 className="text-base font-semibold">修改密码</h2>
         <p className="text-sm text-muted-foreground">
           新密码长度需为 12–128 个字符，修改后需要重新登录。
         </p>

@@ -1,47 +1,39 @@
 import { useEffect, useState } from 'react'
-import { FileText, LayoutGrid, List, Plus, Search, Upload } from 'lucide-react'
+import { FileText, LayoutGrid, List, Plus, Upload } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ListPagination } from '@/components/ListPagination'
+import { ErrorState } from '@/components/ErrorState'
+import { PageHeader } from '@/components/PageHeader'
+import { SearchInput } from '@/components/SearchInput'
 import { cn } from '@/lib/utils'
-import { skillApi, type PackagePreview, type SkillPage, type SkillOrigin, type Skill } from './api'
+import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { usePagedList } from '@/lib/usePagedList'
+import { skillApi, type PackagePreview, type SkillOrigin, type Skill } from './api'
 import { SkillCreator } from './SkillCreator'
 import { SkillDetail } from './SkillDetail'
 import { SkillImportDialog } from './SkillImportDialog'
 
-type SkillManagementProps = {
-  tenantId: number
-  canManageBuiltIn: boolean
-  onDirtyChange: (dirty: boolean) => void
-  onPendingChange?: (pending: boolean) => void
-}
-
-export function SkillManagement(props: SkillManagementProps) {
-  return <SkillManagementState key={props.tenantId} {...props} />
-}
-
-function SkillManagementState({
+export function SkillManagement({
   tenantId,
   canManageBuiltIn,
   onDirtyChange,
   onPendingChange,
-}: SkillManagementProps) {
-  const [result, setResult] = useState<SkillPage>({
-    records: [],
-    total: 0,
-    page: 1,
-    size: 12,
-    counts: { custom: 0, system: 0 },
-  })
-  const [page, setPage] = useState(1)
+}: {
+  tenantId: number
+  canManageBuiltIn: boolean
+  onDirtyChange: (dirty: boolean) => void
+  onPendingChange?: (pending: boolean) => void
+}) {
   const [query, setQuery] = useState('')
+  const debouncedQuery = useDebouncedValue(query)
   const [origin, setOrigin] = useState<SkillOrigin>('all')
-  const [revision, setRevision] = useState(0)
-  const [finished, setFinished] = useState('')
-  const [error, setError] = useState('')
+  const list = usePagedList(
+    (page: number) => skillApi.list(tenantId, page, debouncedQuery, origin),
+    [tenantId, debouncedQuery, origin],
+  )
   const [selected, setSelected] = useState<Skill | null>(null)
   const [create, setCreate] = useState<PackagePreview | 'empty' | null>(null)
   const [importOpen, setImportOpen] = useState(false)
@@ -51,51 +43,27 @@ function SkillManagementState({
     onPendingChange?.(importing)
     return () => onPendingChange?.(false)
   }, [importing, onPendingChange])
-  const key = JSON.stringify([tenantId, page, query, origin, revision])
-  const loading = key !== finished
-  useEffect(() => {
-    let active = true
-    void skillApi
-      .list(tenantId, page, query, origin)
-      .then(
-        (value) => {
-          if (!active) return
-          setError('')
-          if (page > 1 && !value.records.length)
-            setPage(Math.max(1, Math.ceil(value.total / value.size)))
-          else setResult(value)
-        },
-        (cause: unknown) => {
-          if (active) setError(cause instanceof Error ? cause.message : 'Skill 加载失败')
-        },
-      )
-      .finally(() => {
-        if (active) setFinished(key)
-      })
-    return () => {
-      active = false
-    }
-  }, [tenantId, page, query, origin, revision, key])
   function back() {
     setSelected(null)
     setCreate(null)
     onDirtyChange(false)
-    setRevision((n) => n + 1)
+    list.reload()
   }
-  function clear() {
+  function clearFilters() {
     setQuery('')
     setOrigin('all')
-    setPage(1)
+    list.setPage(1)
   }
-  const total = result.counts.custom + result.counts.system
-  const filtered = !!query || origin !== 'all'
+  const counts = list.data?.counts ?? { custom: 0, system: 0 }
+  const total = counts.custom + counts.system
+  const filtered = !!debouncedQuery || origin !== 'all'
   const actions = (
     <>
       <Button variant="outline" disabled={importing} onClick={() => setImportOpen(true)}>
         <Upload aria-hidden />
         导入 Skill
       </Button>
-      <Button data-admin-add disabled={importing} onClick={() => setCreate('empty')}>
+      <Button disabled={importing} onClick={() => setCreate('empty')}>
         <Plus aria-hidden />
         新建 Skill
       </Button>
@@ -118,6 +86,7 @@ function SkillManagementState({
         <TabsContent value="local" className="pt-6">
           {create !== null ? (
             <SkillCreator
+              key={tenantId}
               tenantId={tenantId}
               imported={create === 'empty' ? null : create}
               onClose={back}
@@ -127,7 +96,7 @@ function SkillManagementState({
                 setCreate(null)
                 setSelected(saved)
                 onDirtyChange(false)
-                setRevision((n) => n + 1)
+                list.reload()
               }}
             />
           ) : selected ? (
@@ -139,31 +108,27 @@ function SkillManagementState({
               onBack={back}
               onUpdated={(saved) => {
                 setSelected(saved)
-                setRevision((n) => n + 1)
+                list.reload()
               }}
               onDirtyChange={onDirtyChange}
               onPendingChange={onPendingChange}
             />
           ) : (
             <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-5">
-                <div>
-                  <h1 className="flex items-center gap-3 text-2xl font-semibold">
-                    Skill 管理
-                    <Badge variant="secondary">{loading && !finished ? '—' : total}</Badge>
-                  </h1>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    沉淀可复用的工作方法，让每一次任务都有章可循。
-                  </p>
-                </div>
-                <div className="flex gap-2">{actions}</div>
-              </div>
+              <PageHeader
+                title="Skill 管理"
+                description="沉淀可复用的工作方法，让每一次任务都有章可循。"
+                actions={<div className="flex gap-2">{actions}</div>}
+                badge={
+                  <Badge variant="secondary">{list.loading && !list.data ? '—' : total}</Badge>
+                }
+              />
               <Tabs
                 value={origin}
                 onValueChange={(value) => {
                   if (value === 'all' || value === 'CUSTOM' || value === 'SYSTEM') {
                     setOrigin(value)
-                    setPage(1)
+                    list.setPage(1)
                   }
                 }}
               >
@@ -175,34 +140,26 @@ function SkillManagementState({
                     <TabsTrigger value="CUSTOM">
                       自建
                       <span className="text-xs font-normal text-muted-foreground">
-                        {result.counts.custom}
+                        {counts.custom}
                       </span>
                     </TabsTrigger>
                     <TabsTrigger value="SYSTEM">
                       内置
                       <span className="text-xs font-normal text-muted-foreground">
-                        {result.counts.system}
+                        {counts.system}
                       </span>
                     </TabsTrigger>
                   </TabsList>
                   <div className="order-1 flex w-full items-center gap-2 pb-3 md:order-2 md:w-auto">
-                    <div className="relative min-w-0 flex-1 md:w-72">
-                      <Search
-                        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-                        aria-hidden
-                      />
-                      <Input
-                        className="pl-9"
-                        aria-label="搜索 Skill"
-                        placeholder="搜索名称、标识、描述或标签"
-                        maxLength={160}
-                        value={query}
-                        onChange={(e) => {
-                          setQuery(e.target.value)
-                          setPage(1)
-                        }}
-                      />
-                    </div>
+                    <SearchInput
+                      value={query}
+                      onChange={(value) => {
+                        setQuery(value)
+                        list.setPage(1)
+                      }}
+                      label="搜索 Skill"
+                      placeholder="搜索名称、标识、描述或标签"
+                    />
                     <fieldset
                       aria-label="列表布局"
                       className="flex gap-1 rounded-md border border-border p-1"
@@ -231,26 +188,23 @@ function SkillManagementState({
                 <TabsContent value={origin} className="space-y-4 pt-4">
                   <div className="flex justify-between gap-3 text-xs text-muted-foreground">
                     <span aria-live="polite">
-                      {loading
+                      {list.loading
                         ? '正在加载…'
                         : filtered
-                          ? `找到 ${result.total} 个 Skill`
-                          : `共 ${result.total} 个 Skill`}
+                          ? `找到 ${list.data?.total ?? 0} 个 Skill`
+                          : `共 ${list.data?.total ?? 0} 个 Skill`}
                     </span>
                     <span className="hidden sm:inline">名称、描述与内容版本独立管理</span>
                   </div>
-                  {error && !loading ? (
-                    <div
-                      role="alert"
-                      className="rounded-lg border border-border bg-canvas p-8 text-center"
-                    >
-                      <h2 className="text-base font-medium">暂时无法加载 Skill</h2>
-                      <p className="my-3 text-sm text-danger">{error}</p>
-                      <Button variant="outline" onClick={() => setRevision((n) => n + 1)}>
-                        重新加载
-                      </Button>
-                    </div>
-                  ) : loading ? (
+                  {list.error && !list.loading ? (
+                    <ErrorState
+                      variant="block"
+                      title="暂时无法加载 Skill"
+                      message={list.error}
+                      retryText="重新加载"
+                      onRetry={list.reload}
+                    />
+                  ) : list.loading ? (
                     <div
                       aria-busy="true"
                       aria-label="正在加载 Skill"
@@ -264,7 +218,7 @@ function SkillManagementState({
                         </div>
                       ))}
                     </div>
-                  ) : result.records.length ? (
+                  ) : list.data?.records.length ? (
                     <div
                       className={cn(
                         view === 'grid'
@@ -272,12 +226,12 @@ function SkillManagementState({
                           : 'divide-y divide-border overflow-hidden rounded-lg border border-border',
                       )}
                     >
-                      {result.records.map((skill) => (
+                      {list.data.records.map((skill) => (
                         <Card
                           key={skill.id}
                           density="compact"
                           className={cn(
-                            'relative gap-3 transition-colors focus-within:border-border-strong hover:border-border-strong',
+                            'relative gap-3 transition-colors focus-within:border-border-strong focus-within:bg-surface-hover hover:border-border-strong hover:bg-surface-hover',
                             view === 'list' &&
                               'rounded-none border-0 md:grid md:grid-cols-[minmax(160px,1fr)_minmax(0,1.5fr)_auto] md:items-center md:gap-x-6',
                           )}
@@ -297,7 +251,7 @@ function SkillManagementState({
                             )}
                           >
                             <span className="text-muted-foreground">
-                              {skill.origin === 'SYSTEM' ? '系统内置' : '工作区自建'}
+                              {skill.origin === 'SYSTEM' ? '系统内置' : '租户自建'}
                             </span>
                             <span
                               className={cn(
@@ -385,7 +339,7 @@ function SkillManagementState({
                           : '从一份清晰的指令开始，把常用的工作方法保存下来。'}
                       </p>
                       {filtered && (
-                        <Button variant="outline" className="mt-6" onClick={clear}>
+                        <Button variant="outline" className="mt-6" onClick={clearFilters}>
                           清除筛选
                         </Button>
                       )}
@@ -396,18 +350,18 @@ function SkillManagementState({
                       )}
                     </div>
                   )}
-                  {!loading && !error && result.total > 0 && (
+                  {!list.loading && !list.error && (list.data?.total ?? 0) > 0 && (
                     <ListPagination
-                      page={page}
-                      size={12}
-                      total={result.total}
-                      pending={loading}
-                      onPage={setPage}
+                      page={list.page}
+                      size={list.data?.size ?? 12}
+                      total={list.data?.total ?? 0}
+                      pending={list.loading}
+                      onPage={list.setPage}
                     />
                   )}
                 </TabsContent>
               </Tabs>
-              <p className="text-xs text-muted-foreground">仅展示当前工作区的 Skill</p>
+              <p className="text-xs text-muted-foreground">仅展示当前租户的 Skill</p>
             </div>
           )}
         </TabsContent>

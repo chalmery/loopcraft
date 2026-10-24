@@ -1,5 +1,6 @@
 import { isPositiveInteger, isRecord, isPageOf } from '@/lib/contracts'
 import { isNull, request, type Validator } from '@/lib/api'
+import { queryString } from '@/lib/utils'
 import { isUser, type User } from '@/features/auth/api'
 import { isTenant } from '@/features/workspace/api'
 
@@ -25,9 +26,9 @@ const isManagedTenant: Validator<ManagedTenant> = (value): value is ManagedTenan
 
 export const adminApi = {
   users: (page = 1, size = 10) =>
-    request(`/admin/users?page=${page}&size=${size}`, isPageOf(isUser)),
+    request(`/admin/users${queryString({ page, size })}`, isPageOf(isUser)),
   tenants: (page = 1, size = 10) =>
-    request(`/admin/tenants?page=${page}&size=${size}`, isPageOf(isManagedTenant)),
+    request(`/admin/tenants${queryString({ page, size })}`, isPageOf(isManagedTenant)),
   createUser: (username: string, password: string, displayName: string) =>
     request('/admin/users', isUser, {
       method: 'POST',

@@ -24,6 +24,10 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { onSessionExpired } from '@/lib/api'
+import { errorMessage } from '@/lib/errors'
+import { useSubmitting } from '@/lib/useSubmitting'
+import { ErrorState } from '@/components/ErrorState'
+import { useNavigationGuard } from '@/components/useNavigationGuard'
 import { authApi, type User } from '@/features/auth/api'
 import { Login } from '@/features/auth/Login'
 import { TenantManagement } from '@/features/admin/TenantManagement'
@@ -33,16 +37,6 @@ import { AccountMenu } from '@/features/profile/AccountMenu'
 import { profileApi } from '@/features/profile/api'
 import { TenantSelection } from '@/features/workspace/TenantSelection'
 import { SkillManagement } from '@/features/skills/SkillManagement'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '@/components/ui/alert-dialog'
 import { LlmAccess } from '@/features/llm-access/LlmAccess'
 import { WorkspaceSection } from '@/features/workspace/WorkspaceSection'
 import { workspaceApi } from '@/features/workspace/api'
@@ -52,7 +46,7 @@ type Section = 'skills' | 'llm' | 'workspace' | 'profile' | 'tenants' | 'users'
 const titles: Record<Section, string> = {
   llm: '模型接入',
   skills: 'Skill 管理',
-  workspace: '工作区与成员',
+  workspace: '租户设置',
   profile: '个人设置',
   tenants: '租户管理',
   users: '账号管理',
@@ -92,29 +86,22 @@ function AuthenticatedPortal({
   user: User
   onUser: (user: User | null) => void
 }) {
-  const active = useRef(true)
-  useEffect(() => {
-    active.current = true
-    return () => {
-      active.current = false
-    }
-  }, [])
-  const submitting = useRef(false)
+  const submit = useSubmitting()
+  const busy = submit.busy
   const [section, setSection] = useState<Section>('profile')
   const [screen, setScreen] = useState<'selection' | 'settings'>('selection')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [skillDirty, setSkillDirty] = useState(false)
   const [skillPending, setSkillPending] = useState(false)
-  const [navigation, setNavigation] = useState<(() => void) | null>(null)
-  function guardNavigation(action: () => void) {
-    if (skillPending) {
-      toast.error('Skill 正在处理，请稍后再切换')
-      return
-    }
-    if (skillDirty) setNavigation(() => action)
-    else action()
-  }
-  const [busy, setBusy] = useState(false)
+  const navigation = useNavigationGuard({
+    locked: skillDirty,
+    busy: skillPending,
+    onBusy: () => toast.error('Skill 正在处理，请稍后再切换'),
+    onDiscard: () => setSkillDirty(false),
+    title: '放弃尚未保存的 Skill 修改？',
+    description: '切换页面或租户后，未保存的草稿会丢失。',
+  })
+  const guard = navigation.guard
   const workspace = useWorkspaceData(user.id)
   const { tenants, tenant, tenantId, currentMembers, loading, error, setError } = workspace
   const isOwner = tenant?.myRole === 'OWNER'
@@ -123,16 +110,10 @@ function AuthenticatedPortal({
     ((section === 'tenants' || section === 'users') && !user.platformAdmin)
       ? 'profile'
       : section
-  const links = [
+  const tenantLinks = [
     ...(tenant ? [{ id: 'llm' as const, label: titles.llm, icon: Cpu }] : []),
     ...(isOwner
       ? [{ id: 'workspace' as const, label: titles.workspace, icon: PanelsTopLeft }]
-      : []),
-    ...(user.platformAdmin
-      ? [
-          { id: 'tenants' as const, label: titles.tenants, icon: Building2 },
-          { id: 'users' as const, label: titles.users, icon: Users },
-        ]
       : []),
   ]
 
@@ -141,33 +122,31 @@ function AuthenticatedPortal({
       label: '插件',
       items: tenant ? [{ id: 'skills' as const, label: titles.skills, icon: Puzzle }] : [],
     },
-    { label: '后台配置', items: links },
+    { label: '租户配置', items: tenantLinks },
+    {
+      label: '平台管理',
+      items: user.platformAdmin
+        ? [
+            { id: 'tenants' as const, label: titles.tenants, icon: Building2 },
+            { id: 'users' as const, label: titles.users, icon: Users },
+          ]
+        : [],
+    },
   ]
 
   async function run(action: () => Promise<void>, success: string) {
-    if (submitting.current) return
-    submitting.current = true
-    setBusy(true)
-    try {
+    await submit.run(async () => {
       await action()
-      if (active.current) toast.success(success)
-    } catch (cause) {
-      if (active.current)
-        toast.error(cause instanceof Error ? cause.message : '操作失败，请稍后重试')
-    } finally {
-      submitting.current = false
-      if (active.current) setBusy(false)
-    }
+      return success
+    }, '操作失败，请稍后重试')
   }
   function refreshTenants() {
-    void workspace
-      .reload()
-      .catch((cause: unknown) =>
-        toast.error(cause instanceof Error ? cause.message : '刷新租户失败'),
-      )
+    void workspace.reload().catch((cause: unknown) => {
+      toast.error(errorMessage(cause, '刷新租户失败'))
+    })
   }
   function profile() {
-    guardNavigation(() => {
+    guard(() => {
       setScreen('settings')
       setSection('profile')
     })
@@ -185,24 +164,14 @@ function AuthenticatedPortal({
     toast.success(`已切换至 ${next.name}`)
   }
   async function renameTenant(name: string): Promise<boolean> {
-    if (tenantId === null || submitting.current) return false
-    submitting.current = true
-    setBusy(true)
-    try {
+    if (tenantId === null) return false
+    return submit.run(async () => {
       const updated = await workspaceApi.renameTenant(tenantId, name)
-      if (!active.current) return false
       workspace.setTenants((items) =>
         items.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
       )
-      toast.success('工作区名称已更新')
-      return true
-    } catch (cause) {
-      if (active.current) toast.error(cause instanceof Error ? cause.message : '更新工作区失败')
-      return false
-    } finally {
-      submitting.current = false
-      if (active.current) setBusy(false)
-    }
+      return '租户名称已更新'
+    }, '更新租户失败')
   }
   const account = (
     <AccountMenu
@@ -210,7 +179,7 @@ function AuthenticatedPortal({
       busy={busy}
       onProfile={profile}
       onLogout={() =>
-        guardNavigation(() => {
+        guard(() => {
           void run(async () => {
             await authApi.logout()
             onUser(null)
@@ -219,17 +188,7 @@ function AuthenticatedPortal({
       }
     />
   )
-  const feedback = error && (
-    <div
-      role="alert"
-      className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger"
-    >
-      <span>{error}</span>
-      <Button variant="ghost" size="sm" onClick={refreshTenants}>
-        重试
-      </Button>
-    </div>
-  )
+  const feedback = error && <ErrorState message={error} onRetry={refreshTenants} className="mb-4" />
 
   if (screen === 'selection')
     return (
@@ -248,7 +207,7 @@ function AuthenticatedPortal({
                   setScreen('settings')
                 }}
               >
-                后台配置
+                平台管理
               </Button>
             )}
             {account}
@@ -256,7 +215,7 @@ function AuthenticatedPortal({
         </header>
         {feedback && <div className="mx-auto mt-4 max-w-lg px-4">{feedback}</div>}
         {loading ? (
-          <p className="py-12 text-center text-muted-foreground">正在加载租户…</p>
+          <output className="py-12 text-center text-muted-foreground">正在加载租户…</output>
         ) : (
           <TenantSelection tenants={tenants} onSelect={(selected) => selectTenant(selected.id)} />
         )}
@@ -333,7 +292,7 @@ function AuthenticatedPortal({
                       aria-current={visibleSection === id ? 'page' : undefined}
                       aria-label={sidebarCollapsed ? label : undefined}
                       title={sidebarCollapsed ? label : undefined}
-                      onClick={() => guardNavigation(() => setSection(id))}
+                      onClick={() => guard(() => setSection(id))}
                     >
                       <Icon className="size-4" aria-hidden="true" />
                       <span className={cn(sidebarCollapsed && 'md:hidden')}>{label}</span>
@@ -344,32 +303,7 @@ function AuthenticatedPortal({
             ))}
         </div>
       </aside>
-      <AlertDialog
-        open={navigation !== null}
-        onOpenChange={(open) => {
-          if (!open) setNavigation(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>放弃尚未保存的 Skill 修改？</AlertDialogTitle>
-            <AlertDialogDescription>切换页面或租户后，未保存的草稿会丢失。</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>继续编辑</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                const action = navigation
-                setNavigation(null)
-                setSkillDirty(false)
-                action?.()
-              }}
-            >
-              放弃并继续
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {navigation.dialog}
       <main className="flex min-h-screen min-w-0 flex-col">
         <header className="flex h-12 items-center justify-between gap-2 border-b border-border bg-surface px-3 md:px-5">
           <div className="min-w-0 truncate text-sm font-medium">{titles[visibleSection]}</div>
@@ -378,7 +312,7 @@ function AuthenticatedPortal({
               value={tenant ? String(tenant.id) : ''}
               disabled={busy || skillPending || loading || tenants.length === 0}
               onValueChange={(value) =>
-                guardNavigation(() => {
+                guard(() => {
                   void switchTenant(value)
                 })
               }

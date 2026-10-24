@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { errorMessage } from '@/lib/errors'
 import { workspaceApi, type Member, type Tenant } from './api'
 
 type TenantState = {
@@ -49,7 +50,7 @@ export function useWorkspaceData(userId: number | undefined) {
             userId,
             tenants: [],
             loading: false,
-            error: cause instanceof Error ? cause.message : '加载租户列表失败',
+            error: errorMessage(cause, '加载租户列表失败'),
           })
         }
       })
@@ -77,7 +78,7 @@ export function useWorkspaceData(userId: number | undefined) {
             userId,
             tenantId,
             members: [],
-            error: cause instanceof Error ? cause.message : '加载成员列表失败',
+            error: errorMessage(cause, '加载成员列表失败'),
           })
         }
       })

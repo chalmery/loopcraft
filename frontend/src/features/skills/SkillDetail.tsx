@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { toast } from 'sonner'
 import { ArrowLeft, Pencil } from 'lucide-react'
 import { Form } from '@/components/ui/form'
 import { Badge } from '@/components/ui/badge'
@@ -24,37 +23,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { DeleteRecord } from '@/components/DeleteRecord'
+import { ErrorState } from '@/components/ErrorState'
 import { ListPagination } from '@/components/ListPagination'
-import { skillApi, type Page, type Skill, type Version } from './api'
+import { useNavigationGuard } from '@/components/useNavigationGuard'
+import { toast } from 'sonner'
+import { errorMessage } from '@/lib/errors'
+import { useIsMounted } from '@/lib/useIsMounted'
+import { usePagedList } from '@/lib/usePagedList'
+import { useSubmitting } from '@/lib/useSubmitting'
+import { skillApi, type Skill } from './api'
 import { TagEditor } from './TagEditor'
 import { SkillContent } from './SkillContent'
 
-type SkillDetailProps = {
-  tenantId: number
-  skill: Skill
-  canManage: boolean
-  onBack: () => void
-  onUpdated: (s: Skill) => void
-  onDirtyChange: (dirty: boolean) => void
-  onPendingChange?: (pending: boolean) => void
-}
-
-export function SkillDetail(props: SkillDetailProps) {
-  return <SkillDetailState key={`${props.tenantId}:${props.skill.id}`} {...props} />
-}
-
-function SkillDetailState({
+export function SkillDetail({
   tenantId,
   skill,
   canManage,
@@ -62,7 +44,15 @@ function SkillDetailState({
   onUpdated,
   onDirtyChange,
   onPendingChange,
-}: SkillDetailProps) {
+}: {
+  tenantId: number
+  skill: Skill
+  canManage: boolean
+  onBack: () => void
+  onUpdated: (s: Skill) => void
+  onDirtyChange: (dirty: boolean) => void
+  onPendingChange?: (pending: boolean) => void
+}) {
   const editTrigger = useRef<HTMLButtonElement>(null)
   const nameInput = useRef<HTMLInputElement>(null)
   const focusRequested = useRef(false)
@@ -73,15 +63,9 @@ function SkillDetailState({
     if (editing) nameInput.current?.focus()
     else editTrigger.current?.focus()
   }, [editing])
-  const submitting = useRef(false)
+  const submit = useSubmitting()
+  const mounted = useIsMounted()
   const metadataSequence = useRef(0)
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
   const [tab, setTab] = useState<'info' | 'content'>('info')
   const [number, setNumber] = useState(skill.latestVersion)
   const [name, setName] = useState(skill.name)
@@ -90,24 +74,17 @@ function SkillDetailState({
   const [enabled, setEnabled] = useState(skill.enabled)
   const [metaDirty, setMetaDirty] = useState(false)
   const [contentDirty, setContentDirty] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [page, setPage] = useState(1)
-  const [historyState, setHistoryState] = useState<{
-    key: string
-    data: Page<Version> | null
-    error: string
-  }>({ key: '', data: null, error: '' })
-  const [reload, setReload] = useState(0)
-  const historyKey = JSON.stringify([tenantId, skill.id, skill.latestVersion, page, reload])
-  const history = historyState.key === historyKey ? historyState.data : null
-  const historyError = historyState.key === historyKey ? historyState.error : ''
-  const [pending, setPending] = useState<(() => void) | null>(null)
-  const [contentBusy, setContentBusy] = useState(false)
-  const dirty = metaDirty || contentDirty || busy || contentBusy
+  const [contentWorking, setContentWorking] = useState(false)
+  const busy = submit.busy
+  const history = usePagedList(
+    (page: number) => skillApi.versions(tenantId, skill.id, page),
+    [tenantId, skill.id, skill.latestVersion],
+  )
+  const dirty = metaDirty || contentDirty || busy || contentWorking
   useEffect(() => {
-    onPendingChange?.(busy || contentBusy)
+    onPendingChange?.(busy || contentWorking)
     return () => onPendingChange?.(false)
-  }, [busy, contentBusy, onPendingChange])
+  }, [busy, contentWorking, onPendingChange])
   useEffect(() => {
     onDirtyChange(dirty)
     return () => onDirtyChange(false)
@@ -122,35 +99,13 @@ function SkillDetailState({
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
-  useEffect(() => {
-    let active = true
-    void skillApi.versions(tenantId, skill.id, page).then(
-      (value) => {
-        if (active) {
-          setHistoryState({ key: historyKey, data: value, error: '' })
-        }
-      },
-      (cause: unknown) => {
-        if (active)
-          setHistoryState({
-            key: historyKey,
-            data: null,
-            error: cause instanceof Error ? cause.message : '版本加载失败',
-          })
-      },
-    )
-    return () => {
-      active = false
-    }
-  }, [tenantId, skill.id, skill.latestVersion, page, reload, historyKey])
-  function navigate(action: () => void) {
-    if (busy || contentBusy) return
-    if (dirty) setPending(() => action)
-    else {
-      setEditing(false)
-      action()
-    }
-  }
+  const navigation = useNavigationGuard({
+    locked: dirty,
+    busy: busy || contentWorking,
+    onDiscard: discard,
+    title: '放弃尚未保存的修改？',
+    description: '已保存的文件和历史版本不会改变。',
+  })
   function discard() {
     setEditing(false)
     setName(skill.name)
@@ -172,11 +127,9 @@ function SkillDetailState({
   }
   async function save(e: FormEvent) {
     e.preventDefault()
-    if (!editing || !canManage || submitting.current) return
-    submitting.current = true
+    if (!editing || !canManage) return
     const metadataRequest = ++metadataSequence.current
-    setBusy(true)
-    try {
+    await submit.run(async () => {
       const saved = await skillApi.update(tenantId, skill.id, {
         name,
         description,
@@ -189,25 +142,19 @@ function SkillDetailState({
       onUpdated(saved)
       focusRequested.current = true
       setEditing(false)
-      toast.success('基本信息已保存')
-    } catch (cause) {
-      if (mounted.current && metadataRequest === metadataSequence.current)
-        toast.error(cause instanceof Error ? cause.message : '保存失败')
-    } finally {
-      submitting.current = false
-      if (mounted.current) setBusy(false)
-    }
+      return '基本信息已保存'
+    }, '保存失败')
   }
   return (
     <Tabs
       value={tab}
       onValueChange={(value) => {
         if ((value === 'info' || value === 'content') && value !== tab)
-          navigate(() => setTab(value))
+          navigation.guard(() => setTab(value))
       }}
       className="space-y-6"
     >
-      <Button variant="ghost" size="sm" disabled={busy} onClick={() => navigate(onBack)}>
+      <Button variant="ghost" size="sm" disabled={busy} onClick={() => navigation.guard(onBack)}>
         <ArrowLeft aria-hidden /> Skill 列表
       </Button>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -247,7 +194,7 @@ function SkillDetailState({
                   <div>
                     <CardTitle>编辑基本信息</CardTitle>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      管理 Skill 在工作区中的展示信息。
+                      管理 Skill 在租户中的展示信息。
                     </p>
                   </div>
                   {canManage && (
@@ -265,7 +212,7 @@ function SkillDetailState({
                   <Label className="grid gap-2">
                     显示名称
                     <span className="text-xs font-normal text-muted-foreground">
-                      在工作区中展示的名称
+                      在租户中展示的名称
                     </span>
                     <Input
                       ref={nameInput}
@@ -349,9 +296,7 @@ function SkillDetailState({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <CardTitle>基本信息</CardTitle>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Skill 在工作区中的展示信息。
-                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">Skill 在租户中的展示信息。</p>
                   </div>
                   {canManage && (
                     <div className="flex gap-2">
@@ -420,18 +365,11 @@ function SkillDetailState({
             <CardTitle>
               内容版本{' '}
               <span className="text-xs font-normal text-muted-foreground">
-                {history?.total ?? 0} 个版本
+                {history.data?.total ?? 0} 个版本
               </span>
             </CardTitle>
             <p className="text-xs text-muted-foreground">每次保存内容生成一个版本</p>
-            {historyError && (
-              <p role="alert" className="text-sm text-danger">
-                {historyError}{' '}
-                <Button variant="ghost" size="sm" onClick={() => setReload((n) => n + 1)}>
-                  重试
-                </Button>
-              </p>
-            )}
+            {history.error && <ErrorState message={history.error} onRetry={history.reload} />}
             <Table>
               <TableHeader>
                 <TableRow>
@@ -442,7 +380,7 @@ function SkillDetailState({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {history?.records.map((v) => (
+                {history.data?.records.map((v) => (
                   <TableRow key={v.number}>
                     <TableCell>
                       v{v.number}{' '}
@@ -457,7 +395,7 @@ function SkillDetailState({
                         variant="ghost"
                         size="sm"
                         onClick={() =>
-                          navigate(() => {
+                          navigation.guard(() => {
                             setNumber(v.number)
                             setTab('content')
                           })
@@ -470,14 +408,16 @@ function SkillDetailState({
                 ))}
               </TableBody>
             </Table>
-            {!history && !historyError && <output>正在加载版本…</output>}
-            {history && (
+            {!history.data && !history.error && (
+              <output className="text-sm text-muted-foreground">正在加载版本…</output>
+            )}
+            {history.data && (
               <ListPagination
-                page={page}
-                size={20}
-                total={history.total}
+                page={history.page}
+                size={history.data.size}
+                total={history.data.total}
                 pending={busy}
-                onPage={setPage}
+                onPage={history.setPage}
               />
             )}
           </Card>
@@ -492,7 +432,7 @@ function SkillDetailState({
             latest={skill.latestVersion}
             canManage={canManage}
             onDirtyChange={setContentDirty}
-            onPendingChange={setContentBusy}
+            onPendingChange={setContentWorking}
             onSaved={(saved) => {
               setNumber(saved)
               const metadataRequest = ++metadataSequence.current
@@ -504,38 +444,13 @@ function SkillDetailState({
                 })
                 .catch((cause: unknown) => {
                   if (mounted.current && metadataRequest === metadataSequence.current)
-                    toast.error(cause instanceof Error ? cause.message : '基本信息刷新失败')
+                    toast.error(errorMessage(cause, '基本信息刷新失败'))
                 })
             }}
           />
         </TabsContent>
       )}
-      <AlertDialog
-        open={pending !== null}
-        onOpenChange={(open) => {
-          if (!open) setPending(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>放弃尚未保存的修改？</AlertDialogTitle>
-            <AlertDialogDescription>已保存的文件和历史版本不会改变。</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>继续编辑</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                const action = pending
-                setPending(null)
-                discard()
-                action?.()
-              }}
-            >
-              放弃并继续
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {navigation.dialog}
     </Tabs>
   )
 }

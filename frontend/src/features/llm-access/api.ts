@@ -1,5 +1,6 @@
 import { isRecord as record, isNatural as natural, isPageOf as isPage } from '@/lib/contracts'
 import { isNull, request, type Validator } from '@/lib/api'
+import { queryString } from '@/lib/utils'
 
 export type Protocol = 'OPENAI_COMPATIBLE' | 'ANTHROPIC_COMPATIBLE'
 export type Source = {
@@ -78,7 +79,7 @@ const path = (tenantId: number, sourceId?: number) =>
 const body = (input: unknown, method = 'POST') => ({ method, body: JSON.stringify(input) })
 export const llmApi = {
   sources: (tenantId: number, page: number, q: string) =>
-    request(`${path(tenantId)}?page=${page}&size=20&q=${encodeURIComponent(q)}`, isPage(isSource)),
+    request(`${path(tenantId)}${queryString({ page, size: 20, q })}`, isPage(isSource)),
   source: (tenantId: number, sourceId: number) => request(path(tenantId, sourceId), isSource),
   createSource: (tenantId: number, input: SourceInput) =>
     request(path(tenantId), isSource, body(input)),
@@ -87,10 +88,7 @@ export const llmApi = {
   deleteSource: (tenantId: number, sourceId: number) =>
     request(path(tenantId, sourceId), isNull, { method: 'DELETE' }),
   models: (tenantId: number, sourceId: number, page: number, q = '', size = 20) =>
-    request(
-      `${path(tenantId, sourceId)}/models?page=${page}&size=${size}&q=${encodeURIComponent(q)}`,
-      isPage(isModel),
-    ),
+    request(`${path(tenantId, sourceId)}/models${queryString({ page, size, q })}`, isPage(isModel)),
   createModel: (tenantId: number, sourceId: number, input: Candidate) =>
     request(`${path(tenantId, sourceId)}/models`, isModel, body(input)),
   updateModel: (

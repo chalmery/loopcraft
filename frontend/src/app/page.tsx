@@ -1,15 +1,15 @@
 import { headers } from 'next/headers'
 import { IdentityWorkspace } from '@/features/portal/IdentityWorkspace'
 import { isUser, type User } from '@/features/auth/api'
+import { BACKEND_URL } from '@/lib/backend'
 
 export const dynamic = 'force-dynamic'
 
 async function getCurrentUser(): Promise<User | null> {
   const cookie = (await headers()).get('cookie')
   if (!cookie) return null
-  const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8080'
   try {
-    const response = await fetch(`${backendUrl}/api/users/me`, {
+    const response = await fetch(`${BACKEND_URL}/api/users/me`, {
       headers: { cookie },
       cache: 'no-store',
     })

@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { toast } from 'sonner'
+import { useEffect, useState, type FormEvent } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { Form } from '@/components/ui/form'
 import { Button } from '@/components/ui/button'
@@ -19,6 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { skillApi, type PackagePreview, type Skill, type SkillFile } from './api'
+import { useSubmitting } from '@/lib/useSubmitting'
 import { SkillFiles } from './SkillFiles'
 import { TagEditor } from './TagEditor'
 
@@ -31,11 +31,7 @@ type SkillCreatorProps = {
   onPendingChange?: (pending: boolean) => void
 }
 
-export function SkillCreator(props: SkillCreatorProps) {
-  return <SkillCreatorState key={props.tenantId} {...props} />
-}
-
-function SkillCreatorState({
+export function SkillCreator({
   tenantId,
   imported,
   onClose,
@@ -54,18 +50,11 @@ function SkillCreatorState({
     ],
   )
   const [requestId, setRequestId] = useState(() => crypto.randomUUID())
-  const [busy, setBusy] = useState(false)
   const [working, setWorking] = useState(false)
   const [dirty, setDirty] = useState(imported !== null)
   const [confirmClose, setConfirmClose] = useState(false)
-  const submitting = useRef(false)
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
+  const submit = useSubmitting()
+  const busy = submit.busy
   useEffect(() => {
     onPendingChange?.(busy || working)
     return () => onPendingChange?.(false)
@@ -92,27 +81,19 @@ function SkillCreatorState({
     if (dirty) setConfirmClose(true)
     else onClose()
   }
-  async function submit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (submitting.current || working) return
-    if (submitting.current) return
-    submitting.current = true
-    setBusy(true)
-    try {
+    if (working) return
+    await submit.run(async () => {
       const saved = await skillApi.create(
         tenantId,
         { slug, name, description, tags, requestId },
         files,
       )
-      if (!mounted.current) return
-      toast.success('Skill 与 v1 已创建')
+      if (!submit.active.current) return
       onSaved(saved)
-    } catch (cause) {
-      if (mounted.current) toast.error(cause instanceof Error ? cause.message : '创建失败')
-    } finally {
-      submitting.current = false
-      if (mounted.current) setBusy(false)
-    }
+      return 'Skill 与 v1 已创建'
+    }, '创建失败')
   }
   return (
     <Tabs
@@ -138,7 +119,7 @@ function SkillCreatorState({
           <Button variant="outline" disabled={busy || working} onClick={close}>
             取消
           </Button>
-          <Button type="submit" form="skill-create-form" disabled={busy || working}>
+          <Button type="submit" form="skill-create-form" loading={busy} disabled={busy || working}>
             {busy ? '正在保存…' : '创建 Skill'}
           </Button>
         </div>
@@ -154,7 +135,7 @@ function SkillCreatorState({
       <Form
         id="skill-create-form"
         onValidationError={() => setTab('info')}
-        onSubmit={(e) => void submit(e)}
+        onSubmit={(e) => void handleSubmit(e)}
         className="space-y-4"
       >
         <TabsContent
@@ -169,7 +150,7 @@ function SkillCreatorState({
               <Label className="grid gap-2">
                 显示名称
                 <span className="text-xs font-normal text-muted-foreground">
-                  在工作区中展示的名称
+                  在租户中展示的名称
                 </span>
                 <Input
                   required

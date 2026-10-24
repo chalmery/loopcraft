@@ -1,5 +1,6 @@
 import { isPositiveInteger, isRecord } from '@/lib/contracts'
 import { isArrayOf, isNull, request, type Validator } from '@/lib/api'
+import { queryString } from '@/lib/utils'
 import type { User } from '@/features/auth/api'
 
 export type Tenant = {
@@ -45,7 +46,10 @@ export const workspaceApi = {
   async tenants(): Promise<Tenant[]> {
     const tenants: Tenant[] = []
     for (let page = 1; ; page += 1) {
-      const batch = await request(`/tenants?page=${page}&size=100`, isArrayOf(isTenant))
+      const batch = await request(
+        `/tenants${queryString({ page, size: 100 })}`,
+        isArrayOf(isTenant),
+      )
       tenants.push(...batch)
       if (batch.length < 100) return tenants
     }
@@ -54,7 +58,7 @@ export const workspaceApi = {
     const members: Member[] = []
     for (let page = 1; ; page += 1) {
       const batch = await request(
-        `/tenants/${tenantId}/members?page=${page}&size=100`,
+        `/tenants/${tenantId}/members${queryString({ page, size: 100 })}`,
         isArrayOf(isMember),
       )
       members.push(...batch)
@@ -65,7 +69,7 @@ export const workspaceApi = {
     const candidates: MemberCandidate[] = []
     for (let page = 1; ; page += 1) {
       const batch = await request(
-        `/tenants/${tenantId}/member-candidates?page=${page}&size=100`,
+        `/tenants/${tenantId}/member-candidates${queryString({ page, size: 100 })}`,
         isArrayOf(isMemberCandidate),
       )
       candidates.push(...batch)

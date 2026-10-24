@@ -39,7 +39,7 @@ class EnvironmentTests(unittest.TestCase):
                                     "SESSION_COOKIE_SECURE": "true", "STORAGE_ENABLED": "true",
                                     "STORAGE_SECRET_KEY": "external-secret", "RUSTFS_SECRET_KEY": "external-secret",
                                     "AWS_ACCESS_KEY_ID": "external-key", "AWS_SECRET_ACCESS_KEY": "external-secret",
-                                    "AWS_ENDPOINT_URL": "https://external.example"}, clear=True):
+                                    "AWS_ENDPOINT_URL": "https://external.example", "SKILL_BUCKET": "external-bucket"}, clear=True):
             self.assertEqual(dev.test_environment(), {"PATH": "/bin"})
 
     def test_launcher_only_reads_dev_configuration(self):

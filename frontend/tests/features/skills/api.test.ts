@@ -1,15 +1,13 @@
+import { response } from '../../fixtures/http'
 import { afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { clearCsrf } from '@/lib/api'
-import { isContent, isSkillPage, skillApi } from './api'
+import { isContent, isSkillPage, skillApi } from '@/features/skills/api'
 const originalFetch = globalThis.fetch
 afterEach(() => {
   globalThis.fetch = originalFetch
   clearCsrf()
 })
-function response(data: unknown) {
-  return Response.json({ code: 0, message: 'success', data })
-}
 test('整包保存使用 multipart 和 CSRF，包内名称描述原样保留', async () => {
   globalThis.fetch = async (url, options) => {
     if (url === '/api/auth/csrf')

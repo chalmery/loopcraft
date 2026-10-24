@@ -196,10 +196,8 @@
             <p id="empty-description">
               从一份清晰的指令开始，把常用的工作方法保存下来。
             </p>
-            <div class="actions">
-              <button id="empty-create">新建 Skill</button
-              ><button id="empty-import" class="secondary">导入 ZIP</button
-              ><button id="clear-search" class="secondary" hidden>
+            <div id="empty-actions" class="actions" hidden>
+              <button id="clear-search" class="secondary" hidden>
                 清除筛选
               </button>
             </div>
@@ -249,9 +247,15 @@
                   <h2>基本信息</h2>
                   <p class="muted">管理 Skill 在工作区中的展示信息。</p>
                 </div>
-                <button id="save-meta">保存基本信息</button>
+                <div class="actions">
+                  <button id="edit-meta" class="secondary">编辑</button
+                  ><button id="cancel-meta" class="secondary" hidden>
+                    取消</button
+                  ><button id="save-meta">保存基本信息</button>
+                </div>
               </div>
-              <div class="form-grid">
+              <dl id="metadata-summary" class="metadata-summary"></dl>
+              <div class="form-grid" id="metadata-fields">
                 <label
                   >显示名称 <small>在工作区中展示的名称</small
                   ><input

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { PanelsTopLeft } from 'lucide-react'
+import { Form } from '@/components/ui/form'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -79,7 +80,7 @@ export function WorkspaceSection({
         </div>
         {owner ? (
           editing ? (
-            <form
+            <Form
               className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap [&_input]:w-full lg:[&_input]:w-[min(260px,24vw)]"
               onSubmit={(event) => {
                 event.preventDefault()
@@ -102,7 +103,7 @@ export function WorkspaceSection({
               <Button variant="outline" type="button" onClick={() => setEditing(false)}>
                 取消
               </Button>
-            </form>
+            </Form>
           ) : (
             <Button variant="outline" type="button" onClick={() => setEditing(true)}>
               修改名称
@@ -200,7 +201,7 @@ function AddMemberForm({
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-2 lg:w-auto">
-      <form
+      <Form
         className="flex w-full min-w-0 items-center gap-2 lg:w-auto"
         onSubmit={(event) => {
           event.preventDefault()
@@ -231,7 +232,7 @@ function AddMemberForm({
         <Button variant="outline" type="submit" disabled={busy || loading || !selectedId}>
           添加成员
         </Button>
-      </form>
+      </Form>
       {error && (
         <div role="alert" className="flex items-center gap-2 text-xs text-danger">
           <span>{error}</span>

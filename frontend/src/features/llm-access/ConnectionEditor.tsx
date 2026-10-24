@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
+import { Form } from '@/components/ui/form'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -11,27 +12,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { EditorSheet } from '@/features/admin/AdminListParts'
+import { EditorSheet } from '@/components/EditorSheet'
 import { llmApi, type Source, type Protocol } from './api'
 
-export function ConnectionEditor({
-  tenantId,
-  source,
-  onClose,
-  onSaved,
-}: {
+type ConnectionEditorProps = {
   tenantId: number
   source: Source | null
   onClose: () => void
   onSaved: (source: Source) => void
-}) {
+}
+
+export function ConnectionEditor(props: ConnectionEditorProps) {
+  return <ConnectionEditorState key={`${props.tenantId}:${props.source?.id ?? 'new'}`} {...props} />
+}
+
+function ConnectionEditorState({ tenantId, source, onClose, onSaved }: ConnectionEditorProps) {
+  const active = useRef(true)
+  const submitting = useRef(false)
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+    }
+  }, [])
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
   const [protocol, setProtocol] = useState<Protocol>(source?.protocol ?? 'OPENAI_COMPATIBLE')
   const [clear, setClear] = useState(false)
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (busy) return
+    if (submitting.current) return
     const data = new FormData(event.currentTarget)
     const input = {
       name: String(data.get('name')).trim(),
@@ -42,21 +51,23 @@ export function ConnectionEditor({
       ...(source ? { clearApiKey: clear } : {}),
     }
     if (clear && input.apiKey) {
-      setError('更换和清除 API Key 不能同时执行')
+      if (active.current) toast.error('更换和清除 API Key 不能同时执行')
       return
     }
+    submitting.current = true
     setBusy(true)
-    setError('')
     try {
       const saved = source
         ? await llmApi.updateSource(tenantId, source.id, input)
         : await llmApi.createSource(tenantId, input)
+      if (!active.current) return
       toast.success(source ? '连接已更新' : '连接已创建')
       onSaved(saved)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '保存失败')
+      if (active.current) toast.error(cause instanceof Error ? cause.message : '保存失败')
     } finally {
-      setBusy(false)
+      submitting.current = false
+      if (active.current) setBusy(false)
     }
   }
   return (
@@ -66,7 +77,7 @@ export function ConnectionEditor({
       busy={busy}
       onClose={onClose}
     >
-      <form onSubmit={(e) => void save(e)} className="grid gap-4 overflow-y-auto px-6 pb-6">
+      <Form onSubmit={(e) => void save(e)} className="grid gap-4 overflow-y-auto px-6 pb-6">
         <fieldset disabled={busy} className="grid gap-4">
           <Label className="grid gap-2">
             供应商名称
@@ -141,11 +152,6 @@ export function ConnectionEditor({
             </Label>
           )}
         </fieldset>
-        {error && (
-          <p role="alert" className="text-sm text-danger">
-            {error}
-          </p>
-        )}
         <div className="flex justify-end gap-2">
           <Button variant="outline" disabled={busy} onClick={onClose}>
             取消
@@ -154,7 +160,7 @@ export function ConnectionEditor({
             {busy ? '保存中…' : '保存连接'}
           </Button>
         </div>
-      </form>
+      </Form>
     </EditorSheet>
   )
 }

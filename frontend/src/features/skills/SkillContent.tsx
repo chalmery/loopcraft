@@ -4,15 +4,7 @@ import { Button } from '@/components/ui/button'
 import { skillApi, type Content, type SkillFile } from './api'
 import { SkillFiles } from './SkillFiles'
 
-export function SkillContent({
-  tenantId,
-  skillId,
-  number,
-  latest,
-  canManage,
-  onSaved,
-  onDirtyChange,
-}: {
+type SkillContentProps = {
   tenantId: number
   skillId: number
   number: number
@@ -20,7 +12,24 @@ export function SkillContent({
   canManage: boolean
   onSaved: (number: number) => void
   onDirtyChange: (dirty: boolean) => void
-}) {
+  onPendingChange?: (pending: boolean) => void
+}
+
+export function SkillContent(props: SkillContentProps) {
+  return <SkillContentState key={`${props.tenantId}:${props.skillId}:${props.number}`} {...props} />
+}
+
+function SkillContentState({
+  tenantId,
+  skillId,
+  number,
+  latest,
+  canManage,
+  onSaved,
+  onDirtyChange,
+  onPendingChange,
+}: SkillContentProps) {
+  const submitting = useRef(false)
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -28,12 +37,12 @@ export function SkillContent({
       mounted.current = false
     }
   }, [])
-  const [content, setContent] = useState<Content | null>(null),
-    [draft, setDraft] = useState<SkillFile[] | null>(null)
-  const [busy, setBusy] = useState(false),
-    [working, setWorking] = useState(false),
-    [error, setError] = useState(''),
-    [reload, setReload] = useState(0)
+  const [content, setContent] = useState<Content | null>(null)
+  const [draft, setDraft] = useState<SkillFile[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [working, setWorking] = useState(false)
+  const [error, setError] = useState('')
+  const [reload, setReload] = useState(0)
   const [requestId, setRequestId] = useState(() => crypto.randomUUID())
   useEffect(() => {
     let active = true
@@ -54,11 +63,17 @@ export function SkillContent({
   }, [tenantId, skillId, number, reload])
   const dirty = draft !== null
   useEffect(() => {
+    onPendingChange?.(busy || working)
+    return () => onPendingChange?.(false)
+  }, [busy, working, onPendingChange])
+  useEffect(() => {
     onDirtyChange(dirty)
     return () => onDirtyChange(false)
   }, [dirty, onDirtyChange])
   async function save() {
-    if (!draft || busy || working) return
+    if (!draft || submitting.current || working) return
+    if (submitting.current) return
+    submitting.current = true
     setBusy(true)
     setError('')
     try {
@@ -68,8 +83,9 @@ export function SkillContent({
       toast.success(`v${saved.number} 已保存`)
       onSaved(saved.number)
     } catch (cause) {
-      if (mounted.current) setError(cause instanceof Error ? cause.message : '版本保存失败')
+      if (mounted.current) toast.error(cause instanceof Error ? cause.message : '版本保存失败')
     } finally {
+      submitting.current = false
       if (mounted.current) setBusy(false)
     }
   }

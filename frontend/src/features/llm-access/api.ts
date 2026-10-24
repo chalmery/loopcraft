@@ -1,3 +1,4 @@
+import { isRecord as record, isNatural as natural, isPageOf as isPage } from '@/lib/contracts'
 import { isNull, request, type Validator } from '@/lib/api'
 
 export type Protocol = 'OPENAI_COMPATIBLE' | 'ANTHROPIC_COMPATIBLE'
@@ -22,7 +23,6 @@ export type Model = {
   updatedAt: string
 }
 export type Candidate = { name: string; modelId: string }
-export type Page<T> = { records: T[]; total: number; page: number; size: number }
 export type Discovery = { records: Candidate[]; nextCursor: string | null; supported: boolean }
 export type SourceInput = {
   name: string
@@ -33,10 +33,6 @@ export type SourceInput = {
   clearApiKey?: boolean
   enabled?: boolean
 }
-const record = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
-const natural = (v: unknown): v is number =>
-  typeof v === 'number' && Number.isSafeInteger(v) && v >= 0
 export const isSource: Validator<Source> = (v): v is Source =>
   record(v) &&
   natural(v.id) &&
@@ -62,17 +58,7 @@ export const isModel: Validator<Model> = (v): v is Model =>
   typeof v.updatedAt === 'string'
 const isCandidate: Validator<Candidate> = (v): v is Candidate =>
   record(v) && typeof v.name === 'string' && typeof v.modelId === 'string'
-function isPage<T>(validate: Validator<T>): Validator<Page<T>> {
-  return (v): v is Page<T> =>
-    record(v) &&
-    Array.isArray(v.records) &&
-    v.records.every(validate) &&
-    natural(v.total) &&
-    natural(v.page) &&
-    v.page > 0 &&
-    natural(v.size) &&
-    v.size > 0
-}
+
 const isDiscovery: Validator<Discovery> = (v): v is Discovery =>
   record(v) &&
   Array.isArray(v.records) &&
@@ -132,3 +118,5 @@ export const llmApi = {
     }
   },
 }
+
+export type { Page } from '@/lib/contracts'

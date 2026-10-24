@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shlex
 import shutil
 import signal
@@ -15,13 +16,18 @@ import subprocess
 import sys
 import time
 from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, build_opener
 import uuid
+
+from dev_storage import prepare_bucket
 
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCAL_NAME = "loopcraft-local-" + hashlib.sha256(str(ROOT).encode()).hexdigest()[:8]
 IMAGE = "docker.io/library/postgres:17-alpine"
+STORAGE_NAME = LOCAL_NAME.replace("local", "rustfs", 1)
+STORAGE_IMAGE = "docker.io/rustfs/rustfs@sha256:128220dc9382bac81940a1a9616ee8c274a3f3b8f647eedbeb50df5bb8b49922"
 
 
 def read_env(path):
@@ -53,7 +59,7 @@ def environment():
 
 def test_environment():
     # Tests never load dotenv files or inherit application/model credentials.
-    prefixes = ("SPRING_", "LOOPCRAFT_", "LLM_", "DB_", "TEST_DB_", "AGENT_", "LOGGING_", "BOOTSTRAP_ADMIN_", "SESSION_COOKIE_", "STORAGE_", "AWS_", "RUSTFS_")
+    prefixes = ("SPRING_", "LOOPCRAFT_", "LLM_", "DB_", "TEST_DB_", "AGENT_", "LOGGING_", "BOOTSTRAP_ADMIN_", "SESSION_COOKIE_", "STORAGE_", "AWS_", "RUSTFS_", "SKILL_")
     excluded = {"JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "MAVEN_OPTS", "ENABLE_LLM",
                 "LOG_DIR", "LOG_LEVEL_ROOT", "LOG_LEVEL_APP"}
     return {key: value for key, value in os.environ.items()
@@ -71,7 +77,10 @@ def local_environment():
     env = environment()
     defaults = {"DB_PORT": "15432", "DB_NAME": "loopcraft_local",
                 "DB_USER": "loopcraft", "DB_PASSWORD": "loopcraft_local_only",
-                "SERVER_PORT": "8080", "FRONTEND_PORT": "5173"}
+                "SERVER_PORT": "8080", "FRONTEND_PORT": "5173",
+                "STORAGE_ENABLED": "true", "STORAGE_ENDPOINT": "http://127.0.0.1:9000",
+                "STORAGE_REGION": "us-east-1", "SKILL_BUCKET": "loopcraft-skills",
+                "RUSTFS_CONSOLE_PORT": "9001", "RUSTFS_MANAGED": "true"}
     for key, value in defaults.items():
         env.setdefault(key, value)
     env.setdefault("LOG_DIR", str(ROOT / ".run" / "logs"))
@@ -182,6 +191,116 @@ def database_up(engine, env):
     print(f"PostgreSQL ready on 127.0.0.1:{env['DB_PORT']} ({LOCAL_NAME})", flush=True)
 
 
+def storage_container(engine, env):
+    name = env.get("RUSTFS_CONTAINER", STORAGE_NAME)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name):
+        raise ValueError("Invalid RUSTFS_CONTAINER name")
+    info = inspect_container(engine, name)
+    if info:
+        labels = info["Config"].get("Labels") or {}
+        owned = labels.get("loopcraft.root") == str(ROOT)
+        # Reuse an explicitly selected, previously installed local RustFS.
+        shared = "RUSTFS_CONTAINER" in env and labels.get("io.local.rustfs") == "true" and not labels.get("loopcraft.root")
+        if not (owned or shared):
+            raise ValueError("Refusing to operate on a RustFS container owned by another workspace")
+    return name, info
+
+
+def storage_credentials(env, managed):
+    configured = [bool(env.get(key)) for key in ("STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY")]
+    if any(configured) and not all(configured):
+        raise ValueError("Configure both STORAGE_ACCESS_KEY and STORAGE_SECRET_KEY")
+    if all(configured):
+        return
+    if not managed:
+        raise ValueError("External storage requires STORAGE_ACCESS_KEY and STORAGE_SECRET_KEY")
+    path = ROOT / ".run" / "storage.env"
+    path.parent.mkdir(exist_ok=True)
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        saved = read_env(path)
+    else:
+        saved = {"STORAGE_ACCESS_KEY": secrets.token_hex(16),
+                 "STORAGE_SECRET_KEY": secrets.token_hex(32)}
+        with os.fdopen(descriptor, "w") as target:
+            target.write("".join(f"{key}={value}\n" for key, value in saved.items()))
+    if not all(saved.get(key) for key in ("STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY")):
+        raise ValueError("Invalid .run/storage.env; configure storage credentials explicitly")
+    env.update({key: saved[key] for key in ("STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY")})
+
+
+def storage_up(engine, env):
+    if env["STORAGE_ENABLED"].lower() == "false":
+        print("File storage disabled by STORAGE_ENABLED=false", flush=True)
+        return
+    if env["STORAGE_ENABLED"].lower() != "true" or env["RUSTFS_MANAGED"].lower() not in ("true", "false"):
+        raise ValueError("STORAGE_ENABLED and RUSTFS_MANAGED must be true or false")
+    managed = env["RUSTFS_MANAGED"].lower() == "true"
+    endpoint = urlsplit(env["STORAGE_ENDPOINT"])
+    if managed:
+        if endpoint.scheme != "http" or endpoint.hostname != "127.0.0.1" or endpoint.path not in ("", "/") or endpoint.query or endpoint.fragment or endpoint.username or endpoint.password:
+            raise ValueError("Managed RustFS requires a loopback HTTP STORAGE_ENDPOINT; set RUSTFS_MANAGED=false for external storage")
+        api_port, console_port = str(port(endpoint.port or 80)), str(port(env["RUSTFS_CONSOLE_PORT"]))
+        if api_port == console_port:
+            raise ValueError("RustFS API and console ports must differ")
+        name, info = storage_container(engine, env)
+    storage_credentials(env, managed)
+    if managed:
+        if info:
+            bindings = info["HostConfig"]["PortBindings"]
+            for internal, external in (("9000/tcp", api_port), ("9001/tcp", console_port)):
+                if not any(item["HostPort"] == external and item["HostIp"] == "127.0.0.1" for item in bindings.get(internal, [])):
+                    raise ValueError("RustFS port mapping differs; update local configuration (data volume retained)")
+            values = dict(item.split("=", 1) for item in info["Config"].get("Env", []) if "=" in item)
+            if any(values.get("RUSTFS_" + suffix) != env["STORAGE_" + suffix] for suffix in ("ACCESS_KEY", "SECRET_KEY")):
+                raise ValueError("Storage credentials differ from existing RustFS; configure the matching local credentials")
+            if not info["State"]["Running"]:
+                run([engine, "start", name], capture=True)
+        else:
+            run([engine, "run", "--detach", "--name", name,
+                 "--memory", "2g", "--cpus", "1", "--pids-limit", "512",
+                 "--label", "loopcraft.root=" + str(ROOT),
+                 "--publish", f"127.0.0.1:{api_port}:9000",
+                 "--publish", f"127.0.0.1:{console_port}:9001",
+                 "--volume", name + "-data:/data:Z",
+                 "--env", "RUSTFS_ACCESS_KEY", "--env", "RUSTFS_SECRET_KEY",
+                 "--env", "RUSTFS_ADDRESS=:9000", "--env", "RUSTFS_CONSOLE_ADDRESS=:9001",
+                 "--env", "RUSTFS_CONSOLE_ENABLE=true", STORAGE_IMAGE, "/data"],
+                env={**env, "RUSTFS_ACCESS_KEY": env["STORAGE_ACCESS_KEY"],
+                     "RUSTFS_SECRET_KEY": env["STORAGE_SECRET_KEY"]}, capture=True)
+        opener = build_opener(ProxyHandler({}))
+        deadline = time.monotonic() + 60
+        while True:
+            try:
+                with opener.open(env["STORAGE_ENDPOINT"].rstrip("/") + "/health/ready", timeout=2) as response:
+                    if response.status == 200:
+                        break
+            except (URLError, TimeoutError, ConnectionError):
+                pass
+            if time.monotonic() >= deadline:
+                raise ValueError("RustFS was not ready in 60s; check container logs")
+            time.sleep(0.5)
+    prepare_bucket(env, create=managed)
+    print(f"File storage ready: {env['STORAGE_ENDPOINT']} (Skill bucket: {env['SKILL_BUCKET']})", flush=True)
+
+
+def storage_command(action):
+    env, engine = local_environment(), runtime()
+    if action == "up":
+        storage_up(engine, env)
+    else:
+        if env["RUSTFS_MANAGED"].lower() != "true":
+            raise ValueError("External storage is not managed by this launcher")
+        name, info = storage_container(engine, env)
+        if action == "down":
+            if info and info["State"]["Running"]:
+                run([engine, "stop", "--time", "10", name], capture=True)
+            print("RustFS stopped; container and data volume retained")
+        else:
+            print("absent" if info is None else info["State"]["Status"])
+
+
 def database_command(action, sql_file):
     env, engine = local_environment(), runtime()
     if action == "up":
@@ -265,7 +384,9 @@ def development(scope):
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             probe.bind(("127.0.0.1", service_port))
     if scope in ("all", "backend"):
-        database_up(runtime(), env)
+        engine = runtime()
+        database_up(engine, env)
+        storage_up(engine, env)
     log_dir = ROOT / ".run"
     log_dir.mkdir(exist_ok=True)
     children, logs = [], []
@@ -282,7 +403,7 @@ def development(scope):
             print(f"{name} ready: {url} (log: .run/{name}.log)", flush=True)
         if scope in ("all", "backend"):
             print(f"Application log: {Path(env['LOG_DIR']) / 'loopcraft.log'}", flush=True)
-        print("Ctrl+C stops these application processes; PostgreSQL data is retained", flush=True)
+        print("Ctrl+C stops these application processes; PostgreSQL and RustFS remain running; data is retained", flush=True)
         while True:
             if any(child.poll() is not None for child in children):
                 raise ValueError("A development process exited; inspect .run/*.log")
@@ -340,6 +461,8 @@ def main():
     db = commands.add_parser("db", help="Manage only this workspace's local PostgreSQL")
     db.add_argument("action", choices=("up", "down", "status", "sql"))
     db.add_argument("sql_file", nargs="?")
+    storage = commands.add_parser("storage", help="Manage local RustFS without deleting data")
+    storage.add_argument("action", choices=("up", "down", "status"))
     test = commands.add_parser("test", help="Checks without real model calls; integration uses a disposable DB")
     test.add_argument("scope", choices=("repo", "backend", "frontend", "all", "integration"),
                       nargs="?", default="all")
@@ -350,6 +473,8 @@ def main():
         if (args.action == "sql") != bool(args.sql_file):
             parser.error("db sql requires a path; other db commands take no path")
         database_command(args.action, args.sql_file)
+    elif args.command == "storage":
+        storage_command(args.action)
     elif args.command == "test":
         tests(args.scope)
 

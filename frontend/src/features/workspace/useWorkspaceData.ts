@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { workspaceApi, type Member, type Tenant } from './api'
 
 type TenantState = {
@@ -15,6 +15,8 @@ type MemberState = {
 }
 
 export function useWorkspaceData(userId: number | undefined) {
+  const tenantSequence = useRef(0)
+  const memberSequence = useRef(0)
   const [tenantState, setTenantState] = useState<TenantState>(() => ({
     userId,
     tenants: [],
@@ -34,14 +36,15 @@ export function useWorkspaceData(userId: number | undefined) {
 
   useEffect(() => {
     if (userId === undefined) return
-    let active = true
+    const requestId = ++tenantSequence.current
     workspaceApi
       .tenants()
       .then((tenants) => {
-        if (active) setTenantState({ userId, tenants, loading: false, error: '' })
+        if (requestId === tenantSequence.current)
+          setTenantState({ userId, tenants, loading: false, error: '' })
       })
       .catch((cause: unknown) => {
-        if (active) {
+        if (requestId === tenantSequence.current) {
           setTenantState({
             userId,
             tenants: [],
@@ -51,7 +54,7 @@ export function useWorkspaceData(userId: number | undefined) {
         }
       })
     return () => {
-      active = false
+      tenantSequence.current += 1
     }
   }, [userId])
 
@@ -61,14 +64,15 @@ export function useWorkspaceData(userId: number | undefined) {
 
   useEffect(() => {
     if (userId === undefined || tenantId === null || tenant?.myRole !== 'OWNER') return
-    let active = true
+    const requestId = ++memberSequence.current
     workspaceApi
       .members(tenantId)
       .then((members) => {
-        if (active) setMemberState({ userId, tenantId, members, error: '' })
+        if (requestId === memberSequence.current)
+          setMemberState({ userId, tenantId, members, error: '' })
       })
       .catch((cause: unknown) => {
-        if (active) {
+        if (requestId === memberSequence.current) {
           setMemberState({
             userId,
             tenantId,
@@ -78,7 +82,7 @@ export function useWorkspaceData(userId: number | undefined) {
         }
       })
     return () => {
-      active = false
+      memberSequence.current += 1
     }
   }, [userId, tenantId, tenant?.myRole])
 
@@ -100,6 +104,7 @@ export function useWorkspaceData(userId: number | undefined) {
   }
 
   function setTenantId(nextTenantId: number | null) {
+    memberSequence.current += 1
     setSelection({ userId, tenantId: nextTenantId })
   }
 
@@ -118,13 +123,28 @@ export function useWorkspaceData(userId: number | undefined) {
 
   async function reload() {
     if (userId === undefined) return
-    const nextTenants = await workspaceApi.tenants()
-    setTenantState({ userId, tenants: nextTenants, loading: false, error: '' })
-    if (tenantId !== null && !nextTenants.some((item) => item.id === tenantId))
-      setSelection({ userId, tenantId: null })
-    if (tenantId !== null && nextTenants.find((item) => item.id === tenantId)?.myRole === 'OWNER') {
-      const nextMembers = await workspaceApi.members(tenantId)
-      setMemberState({ userId, tenantId, members: nextMembers, error: '' })
+    const tenantRequest = ++tenantSequence.current
+    const memberRequest = ++memberSequence.current
+    try {
+      const nextTenants = await workspaceApi.tenants()
+      if (tenantRequest !== tenantSequence.current) return
+      setTenantState({ userId, tenants: nextTenants, loading: false, error: '' })
+      if (memberRequest !== memberSequence.current) return
+      if (tenantId !== null && !nextTenants.some((item) => item.id === tenantId)) {
+        setSelection({ userId, tenantId: null })
+      }
+      if (
+        tenantId !== null &&
+        nextTenants.find((item) => item.id === tenantId)?.myRole === 'OWNER'
+      ) {
+        const members = await workspaceApi.members(tenantId)
+        if (tenantRequest !== tenantSequence.current || memberRequest !== memberSequence.current)
+          return
+        setMemberState({ userId, tenantId, members, error: '' })
+      }
+    } catch (cause) {
+      if (tenantRequest === tenantSequence.current && memberRequest === memberSequence.current)
+        throw cause
     }
   }
 

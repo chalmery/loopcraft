@@ -1,3 +1,4 @@
+import { Form } from '@/components/ui/form'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import type { User } from '@/features/auth/api'
@@ -30,7 +31,7 @@ export function ProfileSection({
         <p className="text-sm text-muted-foreground">
           账号名 <strong className="ml-1 font-medium text-secondary">@{user.username}</strong>
         </p>
-        <form
+        <Form
           className="flex max-w-[440px] flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault()
@@ -42,14 +43,14 @@ export function ProfileSection({
           <Button variant="default" className="self-start" type="submit" disabled={busy}>
             保存资料
           </Button>
-        </form>
+        </Form>
       </Card>
       <Card className="[&_h2]:text-base [&_h2]:font-semibold">
         <h2>修改密码</h2>
         <p className="text-sm text-muted-foreground">
           新密码长度需为 12–128 个字符，修改后需要重新登录。
         </p>
-        <form
+        <Form
           className="flex max-w-[440px] flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault()
@@ -78,7 +79,7 @@ export function ProfileSection({
           <Button variant="default" className="self-start" type="submit" disabled={busy}>
             更新密码
           </Button>
-        </form>
+        </Form>
       </Card>
     </div>
   )

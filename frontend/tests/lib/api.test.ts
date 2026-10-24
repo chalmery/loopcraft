@@ -1,6 +1,6 @@
 import { afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ApiError, clearCsrf, isNull, onSessionExpired, refreshCsrf, request } from './api'
+import { ApiError, clearCsrf, isNull, onSessionExpired, refreshCsrf, request } from '@/lib/api'
 import { authApi } from '@/features/auth/api'
 
 const originalFetch = globalThis.fetch

@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { useRef, useState, type ChangeEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,7 +31,6 @@ export function SkillFiles({
   const [adding, setAdding] = useState(false)
   const [selected, setSelected] = useState('SKILL.md')
   const [path, setPath] = useState('')
-  const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
   const file = files.find((f) => f.path === selected) ?? files[0]
   async function replace(e: ChangeEvent<HTMLInputElement>) {
@@ -38,7 +38,7 @@ export function SkillFiles({
     e.target.value = ''
     if (!incoming || !file) return
     if (incoming.size > 2 * 1024 * 1024) {
-      setError('单文件不能超过 2 MiB')
+      toast.error('单文件不能超过 2 MiB')
       return
     }
     setUploading(true)
@@ -62,9 +62,8 @@ export function SkillFiles({
       onChange(
         files.map((f) => (f.path === file.path ? { ...f, size: bytes.length, text, base64 } : f)),
       )
-      setError('')
     } catch {
-      setError('文件读取失败')
+      toast.error('文件读取失败')
     } finally {
       setUploading(false)
       onWorkingChange(false)
@@ -81,14 +80,13 @@ export function SkillFiles({
       name.length > 240 ||
       files.some((f) => f.path === name)
     ) {
-      setError('请输入不重复的包内相对路径，不能包含 . 或 ..')
+      toast.error('请输入不重复的包内相对路径，不能包含 . 或 ..')
       return
     }
     onChange([...files, { path: name, text: '', base64: null, size: 0 }])
     setSelected(name)
     setPath('')
     setAdding(false)
-    setError('')
   }
   return (
     <div className="space-y-3">
@@ -107,11 +105,6 @@ export function SkillFiles({
         </div>
       )}
       {uploading && <output>正在处理文件…</output>}
-      {error && (
-        <p className="text-sm text-danger" role="alert">
-          {error}
-        </p>
-      )}
       <div className="grid min-w-0 overflow-hidden rounded-lg border border-border bg-surface md:grid-cols-[220px_minmax(0,1fr)]">
         <div
           className="min-w-0 space-y-1 border-b border-border bg-canvas p-3 md:border-r md:border-b-0"

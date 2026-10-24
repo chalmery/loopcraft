@@ -1,26 +1,34 @@
 import { useEffect, useState } from 'react'
-import { FileText, LayoutGrid, List, Plus, RefreshCw, Search, Upload } from 'lucide-react'
+import { FileText, LayoutGrid, List, Plus, Search, Upload } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ListPagination } from '@/features/admin/AdminListParts'
+import { ListPagination } from '@/components/ListPagination'
 import { cn } from '@/lib/utils'
 import { skillApi, type PackagePreview, type SkillPage, type SkillOrigin, type Skill } from './api'
 import { SkillCreator } from './SkillCreator'
 import { SkillDetail } from './SkillDetail'
 import { SkillImportDialog } from './SkillImportDialog'
 
-export function SkillManagement({
-  tenantId,
-  canManageBuiltIn,
-  onDirtyChange,
-}: {
+type SkillManagementProps = {
   tenantId: number
   canManageBuiltIn: boolean
   onDirtyChange: (dirty: boolean) => void
-}) {
+  onPendingChange?: (pending: boolean) => void
+}
+
+export function SkillManagement(props: SkillManagementProps) {
+  return <SkillManagementState key={props.tenantId} {...props} />
+}
+
+function SkillManagementState({
+  tenantId,
+  canManageBuiltIn,
+  onDirtyChange,
+  onPendingChange,
+}: SkillManagementProps) {
   const [result, setResult] = useState<SkillPage>({
     records: [],
     total: 0,
@@ -28,19 +36,23 @@ export function SkillManagement({
     size: 12,
     counts: { custom: 0, system: 0 },
   })
-  const [page, setPage] = useState(1),
-    [query, setQuery] = useState(''),
-    [origin, setOrigin] = useState<SkillOrigin>('all')
-  const [revision, setRevision] = useState(0),
-    [finished, setFinished] = useState(''),
-    [error, setError] = useState('')
-  const [selected, setSelected] = useState<Skill | null>(null),
-    [create, setCreate] = useState<PackagePreview | 'empty' | null>(null)
-  const [importOpen, setImportOpen] = useState(false),
-    [importing, setImporting] = useState(false),
-    [view, setView] = useState<'grid' | 'list'>('grid')
-  const key = JSON.stringify([tenantId, page, query, origin, revision]),
-    loading = key !== finished
+  const [page, setPage] = useState(1)
+  const [query, setQuery] = useState('')
+  const [origin, setOrigin] = useState<SkillOrigin>('all')
+  const [revision, setRevision] = useState(0)
+  const [finished, setFinished] = useState('')
+  const [error, setError] = useState('')
+  const [selected, setSelected] = useState<Skill | null>(null)
+  const [create, setCreate] = useState<PackagePreview | 'empty' | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [view, setView] = useState<'grid' | 'list'>('grid')
+  useEffect(() => {
+    onPendingChange?.(importing)
+    return () => onPendingChange?.(false)
+  }, [importing, onPendingChange])
+  const key = JSON.stringify([tenantId, page, query, origin, revision])
+  const loading = key !== finished
   useEffect(() => {
     let active = true
     void skillApi
@@ -110,6 +122,7 @@ export function SkillManagement({
               imported={create === 'empty' ? null : create}
               onClose={back}
               onDirtyChange={onDirtyChange}
+              onPendingChange={onPendingChange}
               onSaved={(saved) => {
                 setCreate(null)
                 setSelected(saved)
@@ -129,6 +142,7 @@ export function SkillManagement({
                 setRevision((n) => n + 1)
               }}
               onDirtyChange={onDirtyChange}
+              onPendingChange={onPendingChange}
             />
           ) : (
             <div className="space-y-5">
@@ -212,15 +226,6 @@ export function SkillManagement({
                         <List aria-hidden />
                       </Button>
                     </fieldset>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="刷新 Skill"
-                      disabled={loading}
-                      onClick={() => setRevision((n) => n + 1)}
-                    >
-                      <RefreshCw className={cn(loading && 'animate-spin')} aria-hidden />
-                    </Button>
                   </div>
                 </div>
                 <TabsContent value={origin} className="space-y-4 pt-4">
@@ -272,11 +277,19 @@ export function SkillManagement({
                           key={skill.id}
                           density="compact"
                           className={cn(
-                            'gap-3 transition-colors focus-within:border-border-strong hover:border-border-strong',
+                            'relative gap-3 transition-colors focus-within:border-border-strong hover:border-border-strong',
                             view === 'list' &&
                               'rounded-none border-0 md:grid md:grid-cols-[minmax(160px,1fr)_minmax(0,1.5fr)_auto] md:items-center md:gap-x-6',
                           )}
                         >
+                          <Button
+                            variant="link"
+                            className="absolute inset-0 z-10 h-full w-full rounded-lg p-0"
+                            aria-label={`查看 ${skill.name} 详情`}
+                            onClick={() => setSelected(skill)}
+                          >
+                            <span className="sr-only">查看 {skill.name} 详情</span>
+                          </Button>
                           <div
                             className={cn(
                               'flex items-center justify-between gap-3 text-xs',
@@ -302,16 +315,8 @@ export function SkillManagement({
                               view === 'list' && 'md:col-start-1 md:row-start-1',
                             )}
                           >
-                            <h2>
-                              <Button
-                                variant="link"
-                                className="block h-auto max-w-full truncate p-0 text-left text-base font-semibold"
-                                title={skill.name}
-                                aria-label={`查看 ${skill.name} 详情`}
-                                onClick={() => setSelected(skill)}
-                              >
-                                {skill.name}
-                              </Button>
+                            <h2 className="truncate text-base font-semibold" title={skill.name}>
+                              {skill.name}
                             </h2>
                             <p
                               className="mt-1 truncate font-mono text-xs text-muted-foreground"
@@ -374,20 +379,16 @@ export function SkillManagement({
                       <h2 className="text-xl font-semibold">
                         {filtered ? '没有找到匹配的 Skill' : '创建你的第一个 Skill'}
                       </h2>
-                      <p className="mt-3 mb-6 max-w-sm text-sm text-muted-foreground">
+                      <p className="mt-3 max-w-sm text-sm text-muted-foreground">
                         {filtered
                           ? '换个关键词，或清除筛选后查看全部 Skill。'
                           : '从一份清晰的指令开始，把常用的工作方法保存下来。'}
                       </p>
-                      <div className="flex flex-wrap justify-center gap-2">
-                        {filtered ? (
-                          <Button variant="outline" onClick={clear}>
-                            清除筛选
-                          </Button>
-                        ) : (
-                          actions
-                        )}
-                      </div>
+                      {filtered && (
+                        <Button variant="outline" className="mt-6" onClick={clear}>
+                          清除筛选
+                        </Button>
+                      )}
                       {!filtered && (
                         <span className="mt-6 text-xs text-muted-foreground">
                           支持 SKILL.md 与配套文件 · 内容按版本保存

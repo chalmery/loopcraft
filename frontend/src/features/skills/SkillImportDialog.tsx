@@ -1,40 +1,57 @@
-import { useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { useEffect, useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { skillApi, type PackagePreview } from './api'
 
-export function SkillImportDialog({
-  tenantId,
-  open,
-  onOpenChange,
-  onImported,
-  onWorkingChange,
-}: {
+type SkillImportDialogProps = {
   tenantId: number
   open: boolean
   onOpenChange: (open: boolean) => void
   onImported: (preview: PackagePreview) => void
   onWorkingChange: (working: boolean) => void
-}) {
+}
+
+export function SkillImportDialog(props: SkillImportDialogProps) {
+  return <SkillImportDialogState key={props.tenantId} {...props} />
+}
+
+function SkillImportDialogState({
+  tenantId,
+  open,
+  onOpenChange,
+  onImported,
+  onWorkingChange,
+}: SkillImportDialogProps) {
+  const active = useRef(true)
+  const submitting = useRef(false)
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+    }
+  }, [])
   const input = useRef<HTMLInputElement>(null)
   const [archive, setArchive] = useState<File | null>(null)
-  const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   async function submit() {
-    if (!archive || busy) return
+    if (!archive || submitting.current) return
+    submitting.current = true
     setBusy(true)
-    setError('')
+
     onWorkingChange(true)
     try {
       const preview = await skillApi.preview(tenantId, archive)
+      if (!active.current) return
       onImported(preview)
       onOpenChange(false)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '压缩包读取失败')
+      if (active.current) toast.error(cause instanceof Error ? cause.message : '压缩包读取失败')
     } finally {
-      setBusy(false)
+      submitting.current = false
+      if (active.current) setBusy(false)
       onWorkingChange(false)
     }
   }
@@ -79,13 +96,12 @@ export function SkillImportDialog({
               if (!file) return
               if (!file.name.toLowerCase().endsWith('.zip') || file.size > 20 * 1024 * 1024) {
                 setArchive(null)
-                setError(
+                toast.error(
                   file.size > 20 * 1024 * 1024 ? '压缩包不能超过 20 MiB' : '请选择 ZIP 格式的文件',
                 )
                 return
               }
               setArchive(file)
-              setError('')
             }}
           />
           <Button variant="outline" disabled={busy} onClick={() => input.current?.click()}>
@@ -97,11 +113,6 @@ export function SkillImportDialog({
             </p>
           )}
         </div>
-        {error && (
-          <p role="alert" className="text-sm text-danger">
-            {error}
-          </p>
-        )}
         <div className="flex justify-end gap-2">
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             取消

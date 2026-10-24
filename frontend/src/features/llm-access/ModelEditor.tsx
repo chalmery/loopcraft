@@ -1,45 +1,60 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
+import { Form } from '@/components/ui/form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { EditorSheet } from '@/features/admin/AdminListParts'
+import { EditorSheet } from '@/components/EditorSheet'
 import { llmApi, type Model } from './api'
 
-export function ModelEditor({
-  tenantId,
-  sourceId,
-  model,
-  onClose,
-  onSaved,
-}: {
+type ModelEditorProps = {
   tenantId: number
   sourceId: number
   model: Model | null
   onClose: () => void
   onSaved: () => void
-}) {
+}
+
+export function ModelEditor(props: ModelEditorProps) {
+  return (
+    <ModelEditorState
+      key={`${props.tenantId}:${props.sourceId}:${props.model?.id ?? 'new'}`}
+      {...props}
+    />
+  )
+}
+
+function ModelEditorState({ tenantId, sourceId, model, onClose, onSaved }: ModelEditorProps) {
+  const active = useRef(true)
+  const submitting = useRef(false)
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+    }
+  }, [])
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (busy) return
+    if (submitting.current) return
     const data = new FormData(event.currentTarget)
     const input = {
       name: String(data.get('name')).trim(),
       modelId: String(data.get('modelId')).trim(),
     }
+    submitting.current = true
     setBusy(true)
-    setError('')
     try {
       if (model) await llmApi.updateModel(tenantId, sourceId, model.id, input)
       else await llmApi.createModel(tenantId, sourceId, input)
+      if (!active.current) return
       toast.success(model ? '模型已更新' : '模型已添加')
       onSaved()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '保存失败')
+      if (active.current) toast.error(cause instanceof Error ? cause.message : '保存失败')
     } finally {
-      setBusy(false)
+      submitting.current = false
+      if (active.current) setBusy(false)
     }
   }
   return (
@@ -49,7 +64,7 @@ export function ModelEditor({
       busy={busy}
       onClose={onClose}
     >
-      <form className="grid gap-4 px-6 pb-6" onSubmit={(e) => void save(e)}>
+      <Form className="grid gap-4 px-6 pb-6" onSubmit={(e) => void save(e)}>
         <fieldset disabled={busy} className="grid gap-4">
           <Label className="grid gap-2">
             显示名称
@@ -60,11 +75,6 @@ export function ModelEditor({
             <Input name="modelId" defaultValue={model?.modelId} maxLength={160} required />
           </Label>
         </fieldset>
-        {error && (
-          <p role="alert" className="text-sm text-danger">
-            {error}
-          </p>
-        )}
         <div className="flex justify-end gap-2">
           <Button variant="outline" disabled={busy} onClick={onClose}>
             取消
@@ -73,7 +83,7 @@ export function ModelEditor({
             {busy ? '保存中…' : '保存模型'}
           </Button>
         </div>
-      </form>
+      </Form>
     </EditorSheet>
   )
 }

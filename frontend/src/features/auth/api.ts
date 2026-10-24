@@ -1,3 +1,4 @@
+import { isPositiveInteger, isRecord } from '@/lib/contracts'
 import { clearCsrf, isNull, refreshCsrf, request, type Validator } from '@/lib/api'
 
 export type User = {
@@ -8,13 +9,9 @@ export type User = {
   enabled: boolean
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
 export const isUser: Validator<User> = (value): value is User =>
   isRecord(value) &&
-  typeof value.id === 'number' &&
+  isPositiveInteger(value.id) &&
   typeof value.username === 'string' &&
   typeof value.displayName === 'string' &&
   typeof value.platformAdmin === 'boolean' &&

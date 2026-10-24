@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
+import { Form } from '@/components/ui/form'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -21,22 +22,30 @@ import { skillApi, type PackagePreview, type Skill, type SkillFile } from './api
 import { SkillFiles } from './SkillFiles'
 import { TagEditor } from './TagEditor'
 
-export function SkillCreator({
-  tenantId,
-  imported,
-  onClose,
-  onSaved,
-  onDirtyChange,
-}: {
+type SkillCreatorProps = {
   tenantId: number
   imported: PackagePreview | null
   onClose: () => void
   onSaved: (skill: Skill) => void
   onDirtyChange: (dirty: boolean) => void
-}) {
-  const [name, setName] = useState(imported?.name ?? ''),
-    [slug, setSlug] = useState(imported?.slug ?? ''),
-    [description, setDescription] = useState(imported?.description ?? '')
+  onPendingChange?: (pending: boolean) => void
+}
+
+export function SkillCreator(props: SkillCreatorProps) {
+  return <SkillCreatorState key={props.tenantId} {...props} />
+}
+
+function SkillCreatorState({
+  tenantId,
+  imported,
+  onClose,
+  onSaved,
+  onDirtyChange,
+  onPendingChange,
+}: SkillCreatorProps) {
+  const [name, setName] = useState(imported?.name ?? '')
+  const [slug, setSlug] = useState(imported?.slug ?? '')
+  const [description, setDescription] = useState(imported?.description ?? '')
   const [tab, setTab] = useState<'info' | 'content'>('info')
   const [tags, setTags] = useState<string[]>([])
   const [files, setFiles] = useState<SkillFile[]>(
@@ -45,11 +54,11 @@ export function SkillCreator({
     ],
   )
   const [requestId, setRequestId] = useState(() => crypto.randomUUID())
-  const [busy, setBusy] = useState(false),
-    [working, setWorking] = useState(false),
-    [error, setError] = useState(''),
-    [dirty, setDirty] = useState(imported !== null),
-    [confirmClose, setConfirmClose] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [working, setWorking] = useState(false)
+  const [dirty, setDirty] = useState(imported !== null)
+  const [confirmClose, setConfirmClose] = useState(false)
+  const submitting = useRef(false)
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -57,6 +66,10 @@ export function SkillCreator({
       mounted.current = false
     }
   }, [])
+  useEffect(() => {
+    onPendingChange?.(busy || working)
+    return () => onPendingChange?.(false)
+  }, [busy, working, onPendingChange])
   useEffect(() => {
     onDirtyChange(dirty || busy || working)
     return () => onDirtyChange(false)
@@ -81,17 +94,10 @@ export function SkillCreator({
   }
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (busy || working) return
-    const form = e.currentTarget
-    if (!form.checkValidity()) {
-      setTab('info')
-      requestAnimationFrame(() => {
-        if (mounted.current) form.reportValidity()
-      })
-      return
-    }
+    if (submitting.current || working) return
+    if (submitting.current) return
+    submitting.current = true
     setBusy(true)
-    setError('')
     try {
       const saved = await skillApi.create(
         tenantId,
@@ -102,8 +108,9 @@ export function SkillCreator({
       toast.success('Skill 与 v1 已创建')
       onSaved(saved)
     } catch (cause) {
-      if (mounted.current) setError(cause instanceof Error ? cause.message : '创建失败')
+      if (mounted.current) toast.error(cause instanceof Error ? cause.message : '创建失败')
     } finally {
+      submitting.current = false
       if (mounted.current) setBusy(false)
     }
   }
@@ -144,9 +151,9 @@ export function SkillCreator({
           文件与版本
         </TabsTrigger>
       </TabsList>
-      <form
+      <Form
         id="skill-create-form"
-        noValidate
+        onValidationError={() => setTab('info')}
         onSubmit={(e) => void submit(e)}
         className="space-y-4"
       >
@@ -246,12 +253,7 @@ export function SkillCreator({
         <p className="text-xs text-muted-foreground">
           首次保存将创建 v1，基本信息与全部文件一并保存。
         </p>
-        {error && (
-          <p role="alert" className="text-sm text-danger">
-            {error}
-          </p>
-        )}
-      </form>
+      </Form>
       <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
         <AlertDialogContent>
           <AlertDialogHeader>

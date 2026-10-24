@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { Form } from '@/components/ui/form'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -22,7 +23,10 @@ import {
 import type { User } from '@/features/auth/api'
 import { adminApi } from './api'
 import { useAdminPage } from './useAdminPage'
-import { DeleteRecord, EditorSheet, ListHeading, ListPagination } from './AdminListParts'
+import { DeleteRecord } from '@/components/DeleteRecord'
+import { EditorSheet } from '@/components/EditorSheet'
+import { ListHeading } from '@/features/admin/AdminListParts'
+import { ListPagination } from '@/components/ListPagination'
 
 export function UserManagement({ onUserUpdated }: { onUserUpdated: (user: User) => void }) {
   const list = useAdminPage(adminApi.users)
@@ -139,11 +143,9 @@ function UserEditor({
   onSaved: (user: User) => void
 }) {
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
   const [enabled, setEnabled] = useState(user?.enabled === false ? 'false' : 'true')
   async function save(data: FormData) {
     setBusy(true)
-    setError('')
     try {
       const username = String(data.get('username') ?? '').trim()
       const displayName = String(data.get('displayName') ?? '').trim()
@@ -154,7 +156,7 @@ function UserEditor({
       toast.success(user ? '账号已更新' : '账号已创建')
       onSaved(saved)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '保存失败')
+      toast.error(cause instanceof Error ? cause.message : '保存失败')
     } finally {
       setBusy(false)
     }
@@ -166,7 +168,7 @@ function UserEditor({
       busy={busy}
       onClose={onClose}
     >
-      <form
+      <Form
         className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
           event.preventDefault()
@@ -233,11 +235,6 @@ function UserEditor({
               )}
             </div>
           )}
-          {error && (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          )}
         </fieldset>
         <div className="flex justify-end gap-2 border-t border-border p-6">
           <Button variant="outline" disabled={busy} onClick={onClose}>
@@ -247,7 +244,7 @@ function UserEditor({
             {busy ? '保存中…' : '保存'}
           </Button>
         </div>
-      </form>
+      </Form>
     </EditorSheet>
   )
 }

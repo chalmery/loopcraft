@@ -1,8 +1,8 @@
+import { isPositiveInteger, isRecord, isPageOf } from '@/lib/contracts'
 import { isNull, request, type Validator } from '@/lib/api'
 import { isUser, type User } from '@/features/auth/api'
 import { isTenant } from '@/features/workspace/api'
 
-export type PageResult<T> = { records: T[]; total: number; page: number; size: number }
 export type ManagedTenant = {
   id: number
   name: string
@@ -14,34 +14,14 @@ export type ManagedTenant = {
 export type UserInput = { username: string; displayName: string; enabled: boolean }
 export type TenantInput = { name: string; ownerUserId: number }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
 const isManagedTenant: Validator<ManagedTenant> = (value): value is ManagedTenant =>
   isRecord(value) &&
-  typeof value.id === 'number' &&
+  isPositiveInteger(value.id) &&
   typeof value.name === 'string' &&
-  typeof value.ownerUserId === 'number' &&
+  isPositiveInteger(value.ownerUserId) &&
   typeof value.ownerUsername === 'string' &&
   typeof value.ownerDisplayName === 'string' &&
   typeof value.updatedAt === 'string'
-
-function isPageOf<T>(validate: Validator<T>): Validator<PageResult<T>> {
-  return (value): value is PageResult<T> =>
-    isRecord(value) &&
-    Array.isArray(value.records) &&
-    value.records.every(validate) &&
-    typeof value.total === 'number' &&
-    Number.isSafeInteger(value.total) &&
-    value.total >= 0 &&
-    typeof value.page === 'number' &&
-    Number.isSafeInteger(value.page) &&
-    value.page > 0 &&
-    typeof value.size === 'number' &&
-    Number.isSafeInteger(value.size) &&
-    value.size > 0
-}
 
 export const adminApi = {
   users: (page = 1, size = 10) =>
@@ -73,3 +53,5 @@ export const adminApi = {
     }
   },
 }
+
+export type { Page as PageResult } from '@/lib/contracts'

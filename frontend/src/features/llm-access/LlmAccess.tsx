@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -6,12 +6,27 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { ApiError } from '@/lib/api'
-import { DeleteRecord, ListPagination } from '@/features/admin/AdminListParts'
+import { DeleteRecord } from '@/components/DeleteRecord'
+import { ListPagination } from '@/components/ListPagination'
 import { llmApi, type Page, type Source } from './api'
 import { ConnectionEditor } from './ConnectionEditor'
 import { ModelsPanel } from './ModelsPanel'
 
-export function LlmAccess({ tenantId, canManage }: { tenantId: number; canManage: boolean }) {
+type LlmAccessProps = { tenantId: number; canManage: boolean }
+
+export function LlmAccess(props: LlmAccessProps) {
+  return <LlmAccessState key={props.tenantId} {...props} />
+}
+
+function LlmAccessState({ tenantId, canManage }: LlmAccessProps) {
+  const active = useRef(true)
+  const submitting = useRef(false)
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+    }
+  }, [])
   const [result, setResult] = useState<Page<Source>>({ records: [], total: 0, page: 1, size: 20 })
   const [source, setSource] = useState<Source | null>(null)
   const [page, setPage] = useState(1)
@@ -83,17 +98,21 @@ export function LlmAccess({ tenantId, canManage }: { tenantId: number; canManage
     setRevision((n) => n + 1)
   }
   async function toggle(selected: Source) {
-    if (busy) return
+    if (submitting.current) return
+    submitting.current = true
     setBusy(true)
     try {
       const saved = await llmApi.updateSource(tenantId, selected.id, { enabled: !selected.enabled })
-      setSource(saved)
+      if (!active.current) return
+      setSource((current) => (current?.id === selected.id ? saved : current))
       reload()
+      if (!active.current) return
       toast.success(saved.enabled ? '连接已启用' : '连接已停用')
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '操作失败')
+      if (active.current) toast.error(cause instanceof Error ? cause.message : '操作失败')
     } finally {
-      setBusy(false)
+      submitting.current = false
+      if (active.current) setBusy(false)
     }
   }
   return (

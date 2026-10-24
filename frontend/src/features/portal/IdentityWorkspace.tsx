@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Building2,
   Cpu,
@@ -60,12 +60,26 @@ const titles: Record<Section, string> = {
 
 export function IdentityWorkspace({ initialUser }: { initialUser: User | null }) {
   const [user, setUser] = useState(initialUser)
-  useEffect(() => onSessionExpired(() => setUser(null)), [])
+  const loginSequence = useRef(0)
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        loginSequence.current += 1
+        setUser(null)
+      }),
+    [],
+  )
   async function login(username: string, password: string) {
-    setUser(await authApi.login(username, password))
+    const requestId = ++loginSequence.current
+    const authenticated = await authApi.login(username, password)
+    if (requestId === loginSequence.current) setUser(authenticated)
   }
   return user ? (
-    <AuthenticatedPortal key={user.id} user={user} onUser={setUser} />
+    <AuthenticatedPortal
+      key={user.id}
+      user={user}
+      onUser={(updated) => setUser((current) => (current?.id === user.id ? updated : current))}
+    />
   ) : (
     <Login onLogin={login} />
   )
@@ -78,12 +92,25 @@ function AuthenticatedPortal({
   user: User
   onUser: (user: User | null) => void
 }) {
+  const active = useRef(true)
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+    }
+  }, [])
+  const submitting = useRef(false)
   const [section, setSection] = useState<Section>('profile')
   const [screen, setScreen] = useState<'selection' | 'settings'>('selection')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [skillDirty, setSkillDirty] = useState(false)
+  const [skillPending, setSkillPending] = useState(false)
   const [navigation, setNavigation] = useState<(() => void) | null>(null)
   function guardNavigation(action: () => void) {
+    if (skillPending) {
+      toast.error('Skill 正在处理，请稍后再切换')
+      return
+    }
     if (skillDirty) setNavigation(() => action)
     else action()
   }
@@ -118,20 +145,26 @@ function AuthenticatedPortal({
   ]
 
   async function run(action: () => Promise<void>, success: string) {
+    if (submitting.current) return
+    submitting.current = true
     setBusy(true)
     try {
       await action()
-      toast.success(success)
+      if (active.current) toast.success(success)
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '操作失败，请稍后重试')
+      if (active.current)
+        toast.error(cause instanceof Error ? cause.message : '操作失败，请稍后重试')
     } finally {
-      setBusy(false)
+      submitting.current = false
+      if (active.current) setBusy(false)
     }
   }
   function refreshTenants() {
     void workspace
       .reload()
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : '刷新租户失败'))
+      .catch((cause: unknown) =>
+        toast.error(cause instanceof Error ? cause.message : '刷新租户失败'),
+      )
   }
   function profile() {
     guardNavigation(() => {
@@ -152,20 +185,23 @@ function AuthenticatedPortal({
     toast.success(`已切换至 ${next.name}`)
   }
   async function renameTenant(name: string): Promise<boolean> {
-    if (tenantId === null) return false
+    if (tenantId === null || submitting.current) return false
+    submitting.current = true
     setBusy(true)
     try {
       const updated = await workspaceApi.renameTenant(tenantId, name)
+      if (!active.current) return false
       workspace.setTenants((items) =>
         items.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
       )
       toast.success('工作区名称已更新')
       return true
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '更新工作区失败')
+      if (active.current) toast.error(cause instanceof Error ? cause.message : '更新工作区失败')
       return false
     } finally {
-      setBusy(false)
+      submitting.current = false
+      if (active.current) setBusy(false)
     }
   }
   const account = (
@@ -340,7 +376,7 @@ function AuthenticatedPortal({
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <Select
               value={tenant ? String(tenant.id) : ''}
-              disabled={busy || loading || tenants.length === 0}
+              disabled={busy || skillPending || loading || tenants.length === 0}
               onValueChange={(value) =>
                 guardNavigation(() => {
                   void switchTenant(value)
@@ -423,6 +459,7 @@ function AuthenticatedPortal({
               tenantId={tenantId}
               canManageBuiltIn={isOwner || user.platformAdmin}
               onDirtyChange={setSkillDirty}
+              onPendingChange={setSkillPending}
             />
           )}
           {visibleSection === 'profile' && (

@@ -1,17 +1,14 @@
 package io.github.chalmery.loopcraft.identity;
 
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.chalmery.loopcraft.identity.dto.IdentityViews;
 import io.github.chalmery.loopcraft.identity.mapper.TenantMemberMapper;
 import io.github.chalmery.loopcraft.identity.model.SessionUser;
 import io.github.chalmery.loopcraft.identity.model.UserAccount;
 import io.github.chalmery.loopcraft.identity.service.IdentityService;
+
 import org.apache.ibatis.executor.Executor;
 import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.plugin.Interceptor;
@@ -38,26 +35,43 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** 使用真实事务和数据库锁，固定并发请求交错的位置。 */
 @SpringBootTest
 @ActiveProfiles("integration")
 @Import(IdentityConcurrencyIT.GateConfiguration.class)
-@Sql({"file:sql/identity/create_user.sql", "file:sql/identity/create_tenant.sql",
-        "file:sql/identity/create_tenant_member.sql"})
-@Sql(statements = "DROP TABLE lc_tenant_member, lc_tenant, lc_user",
+@Sql({
+    "file:sql/identity/create_user.sql",
+    "file:sql/identity/create_tenant.sql",
+    "file:sql/identity/create_tenant_member.sql"
+})
+@Sql(
+        statements = "DROP TABLE lc_tenant_member, lc_tenant, lc_user",
         executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
 class IdentityConcurrencyIT {
+
     private static final String PASSWORD = "concurrency-password-123";
+
     @Autowired private IdentityService identity;
+
     @Autowired private JdbcTemplate jdbc;
+
     @Autowired private PlatformTransactionManager transactions;
+
     @Autowired private OwnerQueryGate gate;
+
     private UserAccount admin;
+
     private UserAccount owner;
+
     private UserAccount member;
+
     private long tenantId;
 
     @BeforeEach
@@ -74,30 +88,60 @@ class IdentityConcurrencyIT {
     @Test
     void concurrentAccountEditReadsLatestStateAndRevokesTheInterveningSession() throws Exception {
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            PendingEdit pending = new TransactionTemplate(transactions).execute(status -> {
-                jdbc.queryForObject("SELECT id FROM lc_user WHERE id=? FOR UPDATE", Long.class, member.getId());
-                Future<UserAccount> edit = executor.submit(() -> new TransactionTemplate(transactions).execute(editStatus -> {
-                    jdbc.execute("SET LOCAL application_name = 'loopcraft-account-edit-test'");
-                    return identity.updateUser(admin, member.getId(), "member", "旧编辑", true);
-                }));
-                awaitAccountEditLock(edit);
-                identity.updateUser(admin, member.getId(), "renamed", "新编辑", true);
-                UserAccount loggedIn = identity.login("renamed", PASSWORD);
-                Authentication session = UsernamePasswordAuthenticationToken.authenticated(
-                        new SessionUser(loggedIn.getId(), loggedIn.getCredentialVersion()), null, List.of());
-                return new PendingEdit(edit, session);
-            });
+            PendingEdit pending =
+                    new TransactionTemplate(transactions)
+                            .execute(
+                                    status -> {
+                                        jdbc.queryForObject(
+                                                "SELECT id FROM lc_user WHERE id=? FOR UPDATE",
+                                                Long.class,
+                                                member.getId());
+                                        Future<UserAccount> edit =
+                                                executor.submit(
+                                                        () ->
+                                                                new TransactionTemplate(
+                                                                                transactions)
+                                                                        .execute(
+                                                                                editStatus -> {
+                                                                                    jdbc.execute(
+                                                                                            "SET LOCAL"
+                                                                                                + " application_name"
+                                                                                                + " = 'loopcraft-account-edit-test'");
+                                                                                    return identity
+                                                                                            .updateUser(
+                                                                                                    admin,
+                                                                                                    member
+                                                                                                            .getId(),
+                                                                                                    "member",
+                                                                                                    "旧编辑",
+                                                                                                    true);
+                                                                                }));
+                                        awaitAccountEditLock(edit);
+                                        identity.updateUser(
+                                                admin, member.getId(), "renamed", "新编辑", true);
+                                        UserAccount loggedIn = identity.login("renamed", PASSWORD);
+                                        Authentication session =
+                                                UsernamePasswordAuthenticationToken.authenticated(
+                                                        new SessionUser(
+                                                                loggedIn.getId(),
+                                                                loggedIn.getCredentialVersion()),
+                                                        null,
+                                                        List.of());
+                                        return new PendingEdit(edit, session);
+                                    });
             UserAccount updated = pending.edit().get(10, TimeUnit.SECONDS);
             assertThat(updated.getUsername()).isEqualTo("member");
             assertThat(updated.getCredentialVersion()).isEqualTo(2);
-            assertThatThrownBy(() -> identity.current(pending.session())).isInstanceOf(BadCredentialsException.class);
+            assertThatThrownBy(() -> identity.current(pending.session()))
+                    .isInstanceOf(BadCredentialsException.class);
         }
     }
 
     @Test
     void tenantPageKeepsItsSnapshotDuringOwnerTransferAndAccountDeletion() throws Exception {
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<IdentityViews.PageResult<IdentityViews.ManagedTenant>> page = executor.submit(this::pausedTenantPage);
+            Future<IdentityViews.PageResult<IdentityViews.ManagedTenant>> page =
+                    executor.submit(this::pausedTenantPage);
             try {
                 await(gate.ownerRead);
                 identity.updateTenant(admin, tenantId, "交接后", member.getId());
@@ -105,27 +149,33 @@ class IdentityConcurrencyIT {
             } finally {
                 gate.resume.countDown();
             }
-            IdentityViews.ManagedTenant snapshot = page.get(10, TimeUnit.SECONDS).records().getFirst();
+            IdentityViews.ManagedTenant snapshot =
+                    page.get(10, TimeUnit.SECONDS).records().getFirst();
             assertThat(snapshot.ownerUserId()).isEqualTo(owner.getId());
             assertThat(snapshot.ownerUsername()).isEqualTo("owner");
             assertThat(snapshot.name()).isEqualTo("原租户名称");
         }
-        assertThat(identity.tenantPage(admin, 1, 10).records().getFirst().ownerUserId()).isEqualTo(member.getId());
+        assertThat(identity.tenantPage(admin, 1, 10).records().getFirst().ownerUserId())
+                .isEqualTo(member.getId());
     }
 
     @Test
     void tenantPageKeepsItsSnapshotDuringTenantDeletion() throws Exception {
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<IdentityViews.PageResult<IdentityViews.ManagedTenant>> page = executor.submit(this::pausedTenantPage);
+            Future<IdentityViews.PageResult<IdentityViews.ManagedTenant>> page =
+                    executor.submit(this::pausedTenantPage);
             try {
                 await(gate.ownerRead);
                 identity.deleteTenant(admin, tenantId);
             } finally {
                 gate.resume.countDown();
             }
-            IdentityViews.PageResult<IdentityViews.ManagedTenant> snapshot = page.get(10, TimeUnit.SECONDS);
+            IdentityViews.PageResult<IdentityViews.ManagedTenant> snapshot =
+                    page.get(10, TimeUnit.SECONDS);
             assertThat(snapshot.total()).isEqualTo(1);
-            assertThat(snapshot.records()).extracting(IdentityViews.ManagedTenant::id).containsExactly(tenantId);
+            assertThat(snapshot.records())
+                    .extracting(IdentityViews.ManagedTenant::id)
+                    .containsExactly(tenantId);
         }
         assertThat(identity.tenantPage(admin, 1, 10).records()).isEmpty();
     }
@@ -134,7 +184,8 @@ class IdentityConcurrencyIT {
     void missingOwnerReturnsConflictWithoutGeneratingAnEmptyInClause() {
         jdbc.update("DELETE FROM lc_tenant_member WHERE tenant_id=? AND role='OWNER'", tenantId);
         assertThatThrownBy(() -> identity.tenantPage(admin, 1, 10))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
+                .isInstanceOfSatisfying(
+                        ResponseStatusException.class,
                         error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
     }
 
@@ -147,11 +198,16 @@ class IdentityConcurrencyIT {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (System.nanoTime() < deadline && !pending.isDone()) {
             jdbc.execute("SELECT pg_stat_clear_snapshot()");
-            Long waiting = jdbc.queryForObject("""
-                    SELECT count(*) FROM pg_stat_activity
-                    WHERE application_name='loopcraft-account-edit-test' AND wait_event_type='Lock'
-                    """, Long.class);
-            if (waiting != null && waiting > 0) return;
+            Long waiting =
+                    jdbc.queryForObject(
+                            """
+                            SELECT count(*) FROM pg_stat_activity
+                            WHERE application_name='loopcraft-account-edit-test' AND wait_event_type='Lock'
+                            """,
+                            Long.class);
+            if (waiting != null && waiting > 0) {
+                return;
+            }
             try {
                 Thread.sleep(10);
             } catch (InterruptedException error) {
@@ -171,11 +227,11 @@ class IdentityConcurrencyIT {
         }
     }
 
-    private record PendingEdit(Future<UserAccount> edit, Authentication session) {
-    }
+    private record PendingEdit(Future<UserAccount> edit, Authentication session) {}
 
     @TestConfiguration(proxyBeanMethods = false)
     static class GateConfiguration {
+
         @Bean
         OwnerQueryGate ownerQueryGate() {
             return new OwnerQueryGate();
@@ -183,11 +239,22 @@ class IdentityConcurrencyIT {
     }
 
     /** 只暂停列表读取线程，交接和删除仍完整经过生产代码。 */
-    @Intercepts(@Signature(type = Executor.class, method = "query",
-            args = {MappedStatement.class, Object.class, RowBounds.class, ResultHandler.class}))
+    @Intercepts(
+            @Signature(
+                    type = Executor.class,
+                    method = "query",
+                    args = {
+                        MappedStatement.class,
+                        Object.class,
+                        RowBounds.class,
+                        ResultHandler.class
+                    }))
     static class OwnerQueryGate implements Interceptor {
+
         private final AtomicBoolean paused = new AtomicBoolean();
+
         private CountDownLatch ownerRead;
+
         private CountDownLatch resume;
 
         void reset() {

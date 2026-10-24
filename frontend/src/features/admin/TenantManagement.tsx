@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { Form } from '@/components/ui/form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,7 +22,10 @@ import {
 import type { User } from '@/features/auth/api'
 import { adminApi, type ManagedTenant } from './api'
 import { useAdminPage } from './useAdminPage'
-import { DeleteRecord, EditorSheet, ListHeading, ListPagination } from './AdminListParts'
+import { DeleteRecord } from '@/components/DeleteRecord'
+import { EditorSheet } from '@/components/EditorSheet'
+import { ListHeading } from '@/features/admin/AdminListParts'
+import { ListPagination } from '@/components/ListPagination'
 
 export function TenantManagement({ onChanged }: { onChanged: () => void }) {
   const list = useAdminPage(adminApi.tenants)
@@ -145,7 +149,6 @@ function TenantEditor({
   const [revision, setRevision] = useState(0)
   const [owner, setOwner] = useState(tenant ? String(tenant.ownerUserId) : '')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
   useEffect(() => {
     let active = true
     adminApi
@@ -168,7 +171,6 @@ function TenantEditor({
   }, [revision])
   async function save(data: FormData) {
     setBusy(true)
-    setError('')
     try {
       const name = String(data.get('name') ?? '').trim()
       if (!name) throw new Error('请输入租户名称')
@@ -180,7 +182,7 @@ function TenantEditor({
       toast.success(tenant ? '租户已更新' : '租户已创建')
       onSaved()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '保存失败')
+      toast.error(cause instanceof Error ? cause.message : '保存失败')
     } finally {
       setBusy(false)
     }
@@ -192,7 +194,7 @@ function TenantEditor({
       busy={busy}
       onClose={onClose}
     >
-      <form
+      <Form
         className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
           event.preventDefault()
@@ -248,11 +250,6 @@ function TenantEditor({
           {!loading && !optionsError && users.length === 0 && (
             <p className="text-sm text-muted-foreground">暂无启用的账号，请先到账号管理新增。</p>
           )}
-          {error && (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          )}
         </fieldset>
         <div className="flex justify-end gap-2 border-t border-border p-6">
           <Button variant="outline" disabled={busy} onClick={onClose}>
@@ -267,7 +264,7 @@ function TenantEditor({
             {busy ? '保存中…' : '保存'}
           </Button>
         </div>
-      </form>
+      </Form>
     </EditorSheet>
   )
 }

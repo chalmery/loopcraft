@@ -18,17 +18,20 @@ cd ..
 ./scripts/dev.sh up
 ```
 
-默认前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`，PostgreSQL 17 位于 `127.0.0.1:15432`。启动器检查端口、数据库连接及应用 HTTP 就绪后才报告成功；应用与数据库仅监听本机回环地址。默认无需模型凭证。
+默认前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`，PostgreSQL 17 位于 `127.0.0.1:15432`，RustFS API 位于 `127.0.0.1:9000`、控制台位于 `http://127.0.0.1:9001/rustfs/console/`。启动器依次准备数据库、RustFS 和 Skill 私有桶，再启动应用并检查 HTTP 就绪；各服务仅监听本机回环地址。默认无需模型凭证。
 
 ```bash
-./scripts/dev.sh up backend    # 数据库 + 后端
+./scripts/dev.sh up backend    # 数据库 + 文件存储 + 后端
 ./scripts/dev.sh up frontend   # 仅前端
 ./scripts/dev.sh db up         # 仅数据库，重复执行可复用
 ./scripts/dev.sh db status
 ./scripts/dev.sh db down       # 删除本地数据库容器，保留数据卷
+./scripts/dev.sh storage up    # 仅文件存储，重复执行可复用并检查 Skill 桶
+./scripts/dev.sh storage status
+./scripts/dev.sh storage down  # 停止 RustFS，保留容器和数据卷
 ```
 
-Ctrl+C / SIGTERM 停止本次启动的前后端，数据库继续运行；任一应用退出也会停止本次启动的另一个应用。数据库数据保存在本仓库专属命名卷中，脚本不提供删除持久化数据的命令。
+Ctrl+C / SIGTERM 停止本次启动的前后端，数据库与 RustFS 继续运行；任一应用退出也会停止本次启动的另一个应用。数据保存在持久命名卷中，脚本不提供删除持久化数据的命令。
 
 ## 环境与配置
 
@@ -93,15 +96,19 @@ Session 保存在单实例内存中，空闲 30 分钟过期，服务重启需�
 
 新建支持在线编写，或先导入 ZIP 再进入编辑页；两种新建方式均与详情一致，按“基本信息 / 文件与版本”标签页展示，切换保留草稿。新建页不重复提供 ZIP 上传入口，导入统一从列表发起。导入时用 SKILL.md frontmatter 的 name 预填标识和名称、description 预填描述，保存前可编辑；字段缺失或无法解析时手动补充。首次导入后的基本信息（名称、描述、标签、状态）与包内文件互不自动覆盖，已有 Skill 上传新包也不更新这些字段。标识在同租户内唯一且创建后不改；首次保存同时创建 Skill 与 v1。内容编辑支持文本新增/修改/移除与二进制文件替换，也可上传 ZIP 替换本次草稿的完整文件集合。每次保存追加不可变整包版本，旧版本只读，不做回退和版本说明，不执行脚本或接入 Agent。
 
-先按 [Skill SQL 顺序](backend/sql/skill/README.md) 手动建表，并启用下文的 RustFS 存储。部署侧须预先建立私有 Bucket，默认 `loopcraft-skills`，可通过 `SKILL_BUCKET` 覆盖；应用不自动建桶。对象 Key 由服务端按租户、Skill 和随机标识生成，接口不返回存储地址。存储未启用时列表和基本信息仍可读取，首次创建、读文件或保存版本返回 503。
+先按 [Skill SQL 顺序](backend/sql/skill/README.md) 手动建表。本地启动脚本默认启用 RustFS，检查并建立 Skill 私有桶；部署侧须预先建立私有 Bucket，默认 `loopcraft-skills`，可通过 `SKILL_BUCKET` 覆盖，后端应用本身不自动建桶。对象 Key 由服务端按租户、Skill 和随机标识生成，接口不返回存储地址。存储未启用时列表和基本信息仍可读取，首次创建、读文件或保存版本返回 503。
 
 包限制：ZIP 最多 20 MiB，最多 200 个文件，单文件最多 2 MiB，解压后总内容最多 10 MiB；文件路径最长 240 字符。根目录必须有非空 UTF-8 `SKILL.md`，兼容单层包目录包装。不解压到操作系统目录，不执行压缩包内文件；二进制按原字节保存，文件被当作普通数据，不跟随链接。当前不提供版本下载或从历史重新编辑。
 
-删除需要确认，先隐藏记录，后台每分钟按引用清理全部版本对象，失败保留记录重试。基本信息保存使用修订号，内容保存使用最新版本基线与请求 UUID；并发冲突保留页面草稿、提示刷新，重复提交同一内容不会多建版本。
+删除需要确认，先隐藏记录，后台按引用分批清理版本对象，失败保留记录重试。上传前持久化对象引用，回滚或进程中断后可恢复清理；已有环境须先执行 [Skill SQL 升级](backend/sql/skill/README.md) 中新增的两个脚本。基本信息保存使用修订号，内容保存使用最新版本基线与请求 UUID；并发冲突保留页面草稿、提示刷新，重复提交同一内容不会多建版本。
 
 API 位于 `/api/tenants/{tenantId}/skills`：GET 列表（`page/size/q` 及可选 `origin=CUSTOM|SYSTEM`，响应在分页字段外带租户级 `counts.custom/system`；每条带 `fileCount/contentUpdatedAt`）、POST multipart 首次创建；`/{id}` GET/PATCH/DELETE；`/{id}/versions` GET 分页历史、POST multipart 保存；`/{id}/versions/{number}` GET 文件集合；`/package-preview` POST multipart 校验 ZIP（不落存储）。multipart 的 `input` 是 JSON 字符串，含 `requestId` 和按 files 顺序的 `paths`，保存还需 `baseVersion`；压缩包可直接用 `archive` 替代 files/paths。PATCH 提交完整 name/description/tags/enabled/revision；不接收包内字段改写基本信息。
 
 ## 文件存储
+
+本地启动器固定 RustFS 1.0.3 镜像摘要，默认创建当前仓库专属容器和数据卷。未配置存储凭证时，随机生成并保存在忽略提交的 `.run/storage.env`（权限 `600`），后端沿用同一组凭证；请保留该文件或在 `env/dev/.env` 配置匹配的 `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`。显式复用此前安装并带有 `io.local.rustfs=true` 标签的容器时，设置 `RUSTFS_CONTAINER` 为该容器名并填写现有凭证，启动器会核对标签、回环端口与凭证，不重建容器或修改已有数据。
+
+本地可通过 `STORAGE_ENDPOINT` 和 `RUSTFS_CONSOLE_PORT` 修改端口。使用自行管理的外部 S3 服务时设置 `RUSTFS_MANAGED=false`，启动器只验证已存在的 Skill 桶，不创建容器或桶；通过 `STORAGE_ENABLED=false` 可完全关闭存储。独立 `storage down/status` 仅操作启动器管理或显式选中的本地容器。
 
 后端 `storage` 功能包使用 AWS SDK for Java v2，通过 S3 协议连接 RustFS，固定使用 path-style 寻址。该依赖只用于对象读写，不参与 Agent 循环；接入方式见 [RustFS Java SDK 文档](https://docs.rustfs.com/en/developer/sdk/java)。
 

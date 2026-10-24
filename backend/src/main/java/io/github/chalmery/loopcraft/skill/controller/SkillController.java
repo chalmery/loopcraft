@@ -1,17 +1,19 @@
 package io.github.chalmery.loopcraft.skill.controller;
 
-import java.io.IOException;
-import java.util.List;
 import io.github.chalmery.loopcraft.identity.service.IdentityService;
 import io.github.chalmery.loopcraft.shared.ApiResponse;
 import io.github.chalmery.loopcraft.skill.dto.SkillInputs;
 import io.github.chalmery.loopcraft.skill.dto.SkillViews;
 import io.github.chalmery.loopcraft.skill.service.SkillPackages;
 import io.github.chalmery.loopcraft.skill.service.SkillService;
+
+import jakarta.validation.Valid;
+import jakarta.validation.Validator;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,101 +27,167 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.util.List;
 
 /** Skill 管理接口；文件只通过已授权的租户资源访问，沿用 Session 与 CSRF。 */
 @RestController
 @RequestMapping("/api/tenants/{tenantId}/skills")
 public class SkillController {
-    private final IdentityService identity;
-    private final SkillService skills;
-    private final ObjectMapper json;
 
-    public SkillController(IdentityService identity, SkillService skills, ObjectMapper json) {
-        this.identity = identity; this.skills = skills; this.json = json;
+    private final IdentityService identity;
+
+    private final SkillService skills;
+
+    private final ObjectMapper json;
+    private final Validator validator;
+
+    public SkillController(
+            IdentityService identity, SkillService skills, ObjectMapper json, Validator validator) {
+        this.identity = identity;
+        this.skills = skills;
+        this.json = json;
+        this.validator = validator;
     }
 
     /** 所有租户成员可搜索、分页查看自建和内置 Skill。 */
     @GetMapping
-    public ApiResponse<SkillViews.ListPage> list(Authentication auth, @PathVariable @Positive long tenantId,
-            @RequestParam(defaultValue = "1") @Min(1) int page, @RequestParam(defaultValue = "12") @Min(1) @Max(100) int size,
+    public ApiResponse<SkillViews.ListPage> list(
+            Authentication auth,
+            @PathVariable @Positive long tenantId,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "12") @Min(1) @Max(100) int size,
             @RequestParam(required = false) @Size(max = 160) String q,
             @RequestParam(required = false) String origin) {
-        return ApiResponse.success(skills.list(identity.current(auth), tenantId, page, size, q, origin));
+        return ApiResponse.success(
+                skills.list(identity.current(auth), tenantId, page, size, q, origin));
     }
 
     /** 首次保存同时创建平台记录与 v1，基本信息以用户确认的表单为准。 */
     @PostMapping(consumes = "multipart/form-data")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<SkillViews.Summary> create(Authentication auth, @PathVariable @Positive long tenantId,
-            @RequestParam String input, @RequestParam(required = false) List<MultipartFile> files,
-            @RequestParam(required = false) MultipartFile archive) throws IOException {
+    public ApiResponse<SkillViews.Summary> create(
+            Authentication auth,
+            @PathVariable @Positive long tenantId,
+            @RequestParam String input,
+            @RequestParam(required = false) List<MultipartFile> files,
+            @RequestParam(required = false) MultipartFile archive)
+            throws IOException {
         var actor = identity.current(auth);
         identity.tenant(actor, tenantId, false);
         SkillInputs.Create data = decode(input, SkillInputs.Create.class);
-        return ApiResponse.success(skills.create(actor, tenantId, data, SkillPackages.input(data.paths(), files, archive)));
+        return ApiResponse.success(
+                skills.create(
+                        actor, tenantId, data, SkillPackages.input(data.paths(), files, archive)));
     }
 
     /** 读取基本信息，不返回对象存储地址。 */
     @GetMapping("/{id}")
-    public ApiResponse<SkillViews.Summary> detail(Authentication auth, @PathVariable @Positive long tenantId, @PathVariable @Positive long id) {
-        return ApiResponse.success(skills.detail(identity.current(auth), tenantId, id));
+    public ApiResponse<SkillViews.Summary> detail(
+            Authentication auth,
+            @PathVariable @Positive long tenantId,
+            @PathVariable("id") @Positive long skillId) {
+        return ApiResponse.success(skills.detail(identity.current(auth), tenantId, skillId));
     }
 
     /** 自建由成员管理；内置由 OWNER 或平台管理员管理。 */
     @PatchMapping("/{id}")
-    public ApiResponse<SkillViews.Summary> update(Authentication auth, @PathVariable @Positive long tenantId,
-            @PathVariable @Positive long id, @RequestBody SkillInputs.Metadata input) {
-        return ApiResponse.success(skills.update(identity.current(auth), tenantId, id, input));
+    public ApiResponse<SkillViews.Summary> update(
+            Authentication auth,
+            @PathVariable @Positive long tenantId,
+            @PathVariable("id") @Positive long skillId,
+            @Valid @RequestBody SkillInputs.Metadata input) {
+        return ApiResponse.success(skills.update(identity.current(auth), tenantId, skillId, input));
     }
 
     /** 删除后隐藏，后台按保留的引用幂等清理对象。 */
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(Authentication auth, @PathVariable @Positive long tenantId, @PathVariable @Positive long id,
+    public ApiResponse<Void> delete(
+            Authentication auth,
+            @PathVariable @Positive long tenantId,
+            @PathVariable("id") @Positive long skillId,
             @RequestParam @Min(0) long revision) {
-        skills.delete(identity.current(auth), tenantId, id, revision);
+        skills.delete(identity.current(auth), tenantId, skillId, revision);
         return ApiResponse.success(null);
     }
 
     /** 版本历史仅提供查看。 */
     @GetMapping("/{id}/versions")
-    public ApiResponse<SkillViews.Page<SkillViews.Version>> versions(Authentication auth, @PathVariable @Positive long tenantId,
-            @PathVariable @Positive long id, @RequestParam(defaultValue = "1") @Min(1) int page,
+    public ApiResponse<SkillViews.Page<SkillViews.Version>> versions(
+            Authentication auth,
+            @PathVariable @Positive long tenantId,
+            @PathVariable("id") @Positive long skillId,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return ApiResponse.success(skills.history(identity.current(auth), tenantId, id, page, size));
+        return ApiResponse.success(
+                skills.history(identity.current(auth), tenantId, skillId, page, size));
     }
 
     /** 按版本读取完整文件集合；二进制以 base64 返回，不在浏览器执行。 */
     @GetMapping("/{id}/versions/{number}")
-    public ApiResponse<SkillViews.Content> content(Authentication auth, @PathVariable @Positive long tenantId,
-            @PathVariable @Positive long id, @PathVariable @Min(1) int number) throws IOException {
-        return ApiResponse.success(skills.content(identity.current(auth), tenantId, id, number));
+    public ApiResponse<SkillViews.Content> content(
+            Authentication auth,
+            @PathVariable @Positive long tenantId,
+            @PathVariable("id") @Positive long skillId,
+            @PathVariable @Min(1) int number)
+            throws IOException {
+        return ApiResponse.success(
+                skills.content(identity.current(auth), tenantId, skillId, number));
     }
 
     /** 校验最新基线并追加版本，不允许从旧版本发起恢复。 */
     @PostMapping(path = "/{id}/versions", consumes = "multipart/form-data")
-    public ApiResponse<SkillViews.Version> save(Authentication auth, @PathVariable @Positive long tenantId, @PathVariable @Positive long id,
-            @RequestParam String input, @RequestParam(required = false) List<MultipartFile> files,
-            @RequestParam(required = false) MultipartFile archive) throws IOException {
+    public ApiResponse<SkillViews.Version> save(
+            Authentication auth,
+            @PathVariable @Positive long tenantId,
+            @PathVariable("id") @Positive long skillId,
+            @RequestParam String input,
+            @RequestParam(required = false) List<MultipartFile> files,
+            @RequestParam(required = false) MultipartFile archive)
+            throws IOException {
         var actor = identity.current(auth);
         // 先校验资源可见性，再处理上传；最终写权限仍由服务在锁内校验。
-        skills.detail(actor, tenantId, id);
+        skills.detail(actor, tenantId, skillId);
         SkillInputs.Save data = decode(input, SkillInputs.Save.class);
-        return ApiResponse.success(skills.save(actor, tenantId, id, data, SkillPackages.input(data.paths(), files, archive)));
+        return ApiResponse.success(
+                skills.save(
+                        actor,
+                        tenantId,
+                        skillId,
+                        data,
+                        SkillPackages.input(data.paths(), files, archive)));
     }
 
     /** 上传包预览不落盘、不创建版本；返回新建表单的建议值。 */
     @PostMapping(path = "/package-preview", consumes = "multipart/form-data")
-    public ApiResponse<SkillViews.Preview> preview(Authentication auth, @PathVariable @Positive long tenantId,
-            @RequestParam MultipartFile archive) throws IOException {
+    public ApiResponse<SkillViews.Preview> preview(
+            Authentication auth,
+            @PathVariable @Positive long tenantId,
+            @RequestParam MultipartFile archive)
+            throws IOException {
         identity.tenant(identity.current(auth), tenantId, false);
         return ApiResponse.success(SkillPackages.preview(SkillPackages.input(null, null, archive)));
     }
 
     private <T> T decode(String input, Class<T> type) {
-        if (input.length() > 100_000) throw SkillPackages.invalid("提交参数过长");
-        try { T value = json.readValue(input, type); if (value == null) throw SkillPackages.invalid("提交参数不能为空"); return value; }
-        catch (JacksonException error) { throw SkillPackages.invalid("提交参数格式不正确"); }
+        if (input.length() > 100_000) {
+            throw SkillPackages.invalid("提交参数过长");
+        }
+        try {
+            T value = json.readValue(input, type);
+            if (value == null) {
+                throw SkillPackages.invalid("提交参数不能为空");
+            }
+            if (!validator.validate(value).isEmpty()) {
+                throw SkillPackages.invalid("请求字段格式或长度不合法");
+            }
+            return value;
+        } catch (JacksonException error) {
+            throw SkillPackages.invalid("提交参数格式不正确");
+        }
     }
 }

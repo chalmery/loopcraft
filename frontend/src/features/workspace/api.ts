@@ -1,3 +1,4 @@
+import { isPositiveInteger, isRecord } from '@/lib/contracts'
 import { isArrayOf, isNull, request, type Validator } from '@/lib/api'
 import type { User } from '@/features/auth/api'
 
@@ -16,13 +17,9 @@ export type Member = {
 }
 export type MemberCandidate = Pick<User, 'id' | 'username' | 'displayName'>
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
 export const isTenant: Validator<Tenant> = (value): value is Tenant =>
   isRecord(value) &&
-  typeof value.id === 'number' &&
+  isPositiveInteger(value.id) &&
   typeof value.name === 'string' &&
   typeof value.updatedAt === 'string' &&
   (value.myRole === undefined ||
@@ -32,7 +29,7 @@ export const isTenant: Validator<Tenant> = (value): value is Tenant =>
 
 const isMember: Validator<Member> = (value): value is Member =>
   isRecord(value) &&
-  typeof value.userId === 'number' &&
+  isPositiveInteger(value.userId) &&
   typeof value.username === 'string' &&
   typeof value.displayName === 'string' &&
   (value.role === 'OWNER' || value.role === 'MEMBER') &&
@@ -40,7 +37,7 @@ const isMember: Validator<Member> = (value): value is Member =>
 
 const isMemberCandidate: Validator<MemberCandidate> = (value): value is MemberCandidate =>
   isRecord(value) &&
-  typeof value.id === 'number' &&
+  isPositiveInteger(value.id) &&
   typeof value.username === 'string' &&
   typeof value.displayName === 'string'
 

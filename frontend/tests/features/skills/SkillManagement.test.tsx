@@ -1,57 +1,28 @@
+import { createDom } from '../../support/dom'
+import { skill } from '../../fixtures/skills'
+import { response } from '../../fixtures/http'
 import { afterEach, beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Window } from 'happy-dom'
 import { act } from 'react'
 import type { Root } from 'react-dom/client'
-import { SkillManagement } from './SkillManagement'
+import { SkillManagement } from '@/features/skills/SkillManagement'
 
-const originalFetch = globalThis.fetch
-const descriptors = new Map<string, PropertyDescriptor | undefined>()
-let window: Window, container: HTMLDivElement, root: Root
+let dispose: () => Promise<void>
+let container: HTMLDivElement
+let root: Root
 const calls: string[] = []
-const skill = {
-  id: 1,
-  slug: 'review',
-  name: '文档审阅',
-  description: '审阅文档',
-  tags: ['文档'],
-  origin: 'CUSTOM',
-  enabled: true,
-  latestVersion: 2,
-  revision: 0,
-  updatedAt: '2026-10-23T12:00:00Z',
-  fileCount: 3,
-  contentUpdatedAt: '2026-10-22T12:00:00Z',
-}
+
 const changed = () => {}
 beforeEach(async () => {
-  window = new Window()
-  for (const [name, value] of Object.entries({
-    window,
-    document: window.document,
-    HTMLElement: window.HTMLElement,
-    HTMLButtonElement: window.HTMLButtonElement,
-    HTMLInputElement: window.HTMLInputElement,
-    HTMLTextAreaElement: window.HTMLTextAreaElement,
-    Element: window.Element,
-    Node: window.Node,
-    Event: window.Event,
-    KeyboardEvent: window.KeyboardEvent,
-    getComputedStyle: window.getComputedStyle.bind(window),
-    requestAnimationFrame: window.requestAnimationFrame.bind(window),
-    cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
-    IS_REACT_ACT_ENVIRONMENT: true,
-  })) {
-    descriptors.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
-    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value })
-  }
-  container = document.createElement('div')
-  document.body.append(container)
-  const { createRoot } = await import('react-dom/client')
-  root = createRoot(container)
+  const dom = await createDom()
+  container = dom.container
+  root = dom.root
+  dispose = dom.dispose
   calls.length = 0
   globalThis.fetch = async (url) => {
     calls.push(String(url))
+    if (String(url).includes('/versions?'))
+      return response({ records: [], total: 0, page: 1, size: 20 })
     const search = new URL(String(url), 'http://localhost').searchParams
     const source = search.get('origin')
     return Response.json({
@@ -68,15 +39,7 @@ beforeEach(async () => {
   }
 })
 afterEach(async () => {
-  await act(async () => root.unmount())
-  container.remove()
-  await window.happyDOM.close()
-  globalThis.fetch = originalFetch
-  for (const [name, value] of descriptors) {
-    if (value) Object.defineProperty(globalThis, name, value)
-    else Reflect.deleteProperty(globalThis, name)
-  }
-  descriptors.clear()
+  await dispose()
 })
 async function render() {
   await act(async () =>
@@ -119,4 +82,18 @@ test('加载失败提供重试，后续成功恢复列表', async () => {
   await act(async () => find('button', '重新加载').click())
   assert.equal(container.querySelector('[role="alert"]') === null, true)
   assert.equal(container.textContent?.includes('文档审阅'), true)
+})
+
+test('卡片入口进入只读详情，返回后仍显示列表', async () => {
+  await render()
+  const entry = container.querySelector<HTMLButtonElement>(
+    'button[aria-label="查看 文档审阅 详情"]',
+  )
+  assert.ok(entry)
+  await act(async () => entry.click())
+  assert.equal(container.querySelector('h1')?.textContent, skill.name)
+  assert.equal(container.querySelectorAll('input, textarea, [role="combobox"]').length, 0)
+  assert.equal(container.querySelector('dl')?.textContent?.includes(skill.description), true)
+  await act(async () => find('button', 'Skill 列表').click())
+  assert.equal(container.querySelector('h1')?.textContent?.includes('Skill 管理'), true)
 })

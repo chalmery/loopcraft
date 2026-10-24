@@ -7,17 +7,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { llmApi, type Candidate, type Source } from './api'
 
-export function DiscoveryDialog({
-  tenantId,
-  source,
-  onClose,
-  onImported,
-}: {
+type DiscoveryDialogProps = {
   tenantId: number
   source: Source
   onClose: () => void
   onImported: () => void
-}) {
+}
+
+export function DiscoveryDialog(props: DiscoveryDialogProps) {
+  return <DiscoveryDialogState key={`${props.tenantId}:${props.source.id}`} {...props} />
+}
+
+function DiscoveryDialogState({ tenantId, source, onClose, onImported }: DiscoveryDialogProps) {
   const [records, setRecords] = useState<Candidate[]>([])
   const [existing, setExisting] = useState(new Set<string>())
   const [selected, setSelected] = useState(new Set<string>())
@@ -59,7 +60,7 @@ export function DiscoveryDialog({
     if (loading) return
     const next = restart ? undefined : (cursor ?? undefined)
     if (!restart && next && visited.current.has(next)) {
-      setError('供应商分页重复，请重新查询')
+      toast.error('供应商分页重复，请重新查询')
       return
     }
     setLoading(true)
@@ -87,7 +88,7 @@ export function DiscoveryDialog({
       setSupported(result.supported)
       setExisting(ids)
     } catch (cause) {
-      if (active.current) setError(cause instanceof Error ? cause.message : '查询失败')
+      if (active.current) toast.error(cause instanceof Error ? cause.message : '查询失败')
     } finally {
       if (active.current) setLoading(false)
     }
@@ -108,7 +109,7 @@ export function DiscoveryDialog({
       )
       onImported()
     } catch (cause) {
-      if (active.current) setError(cause instanceof Error ? cause.message : '导入失败')
+      if (active.current) toast.error(cause instanceof Error ? cause.message : '导入失败')
     } finally {
       if (active.current) setSaving(false)
     }

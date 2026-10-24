@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,22 +11,32 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { DeleteRecord, ListPagination } from '@/features/admin/AdminListParts'
+import { DeleteRecord } from '@/components/DeleteRecord'
+import { ListPagination } from '@/components/ListPagination'
 import { llmApi, type Model, type Source, type Page } from './api'
 import { ModelEditor } from './ModelEditor'
 import { DiscoveryDialog } from './DiscoveryDialog'
 
-export function ModelsPanel({
-  tenantId,
-  source,
-  canManage,
-  onSourceChanged,
-}: {
+type ModelsPanelProps = {
   tenantId: number
   source: Source
   canManage: boolean
   onSourceChanged: () => void
-}) {
+}
+
+export function ModelsPanel(props: ModelsPanelProps) {
+  return <ModelsPanelState key={`${props.tenantId}:${props.source.id}`} {...props} />
+}
+
+function ModelsPanelState({ tenantId, source, canManage, onSourceChanged }: ModelsPanelProps) {
+  const active = useRef(true)
+  const submitting = useRef(false)
+  useEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+    }
+  }, [])
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
   const [result, setResult] = useState<Page<Model>>({ records: [], total: 0, page: 1, size: 20 })
@@ -65,16 +75,19 @@ export function ModelsPanel({
     onSourceChanged()
   }
   async function toggle(model: Model) {
-    if (busy) return
+    if (submitting.current) return
+    submitting.current = true
     setBusy(true)
     try {
       await llmApi.updateModel(tenantId, source.id, model.id, { enabled: !model.enabled })
+      if (!active.current) return
       toast.success(model.enabled ? '模型已停用' : '模型已启用')
       changed()
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : '操作失败')
+      if (active.current) toast.error(cause instanceof Error ? cause.message : '操作失败')
     } finally {
-      setBusy(false)
+      submitting.current = false
+      if (active.current) setBusy(false)
     }
   }
   return (

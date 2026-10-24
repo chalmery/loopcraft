@@ -1,9 +1,10 @@
+import { response } from '../../fixtures/http'
 import { afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { clearCsrf } from '@/lib/api'
-import { llmApi, isModel, isSource } from './api'
-import { LlmAccess } from './LlmAccess'
+import { llmApi, isModel, isSource } from '@/features/llm-access/api'
+import { LlmAccess } from '@/features/llm-access/LlmAccess'
 
 const originalFetch = globalThis.fetch
 afterEach(() => {
@@ -29,9 +30,6 @@ const source = {
   enabled: true,
   modelCount: 1,
   updatedAt: '',
-}
-function response(data: unknown) {
-  return Response.json({ code: 0, message: 'success', data })
 }
 
 test('接口边界拒绝无效协议、来源、状态及分页数据', async () => {

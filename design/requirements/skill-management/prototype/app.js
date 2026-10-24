@@ -78,6 +78,7 @@ data.a[3].enabled = false;
 let sourceFilter = "all",
   layout = "grid";
 let tagDraft = [];
+let metadataEditing = false;
 let tenant = "a",
   current = null,
   versionIndex = 0,
@@ -162,14 +163,11 @@ function renderCards() {
   $("empty-description").textContent = filtered
     ? "换个关键词，或清除筛选后查看全部 Skill。"
     : "从一份清晰的指令开始，把常用的工作方法保存下来。";
-  $("empty-create").hidden = filtered;
-  $("empty-import").hidden = filtered;
+  $("empty-actions").hidden = !filtered;
   $("clear-search").hidden = !filtered;
   $("empty-footnote").hidden = filtered;
   const readOnly = $("mode").value === "read";
-  ["create", "import", "empty-create", "empty-import"].forEach(
-    (id) => ($(id).disabled = readOnly),
-  );
+  ["create", "import"].forEach((id) => ($(id).disabled = readOnly));
   document.querySelectorAll("[data-filter]").forEach((button) => {
     const selected = button.dataset.filter === sourceFilter;
     button.classList.toggle("selected", selected);
@@ -192,13 +190,13 @@ function renderCards() {
       ),
     );
     const title = element("div", "", "card-title"),
-      heading = element("h2"),
-      link = element("button", skill.name, "card-open");
+      heading = element("h2", skill.name),
+      link = element("button", "", "card-open");
     link.type = "button";
     link.title = skill.name;
     link.setAttribute("aria-label", `查看 ${skill.name} 详情`);
     link.onclick = () => open(skill);
-    heading.append(link);
+    card.append(link);
     title.append(heading);
     const slug = element("div", skill.slug, "slug");
     slug.title = skill.slug;
@@ -234,11 +232,32 @@ function open(s) {
   current = s;
   versionIndex = s.versions.length - 1;
   isNew = false;
+  metadataEditing = false;
   draft = null;
   metaDirty = false;
   showDetail("info");
 }
 function showDetail(tab) {
+  const editingMetadata = isNew || (metadataEditing && !read());
+  $("metadata-fields").hidden = !editingMetadata;
+  $("metadata-summary").hidden = editingMetadata;
+  $("edit-meta").hidden = isNew || metadataEditing || read();
+  $("cancel-meta").hidden = !metadataEditing || isNew;
+  $("save-meta").hidden = !editingMetadata;
+  $("metadata-summary").replaceChildren();
+  const fields = [
+    ["显示名称", current.name],
+    ["Skill 标识", current.slug],
+    ["来源", current.origin === "SYSTEM" ? "系统内置" : "租户自建"],
+    ["状态", current.enabled ? "启用" : "禁用"],
+    ["描述", current.description],
+    ["标签", current.tags.join(" · ") || "暂无标签"],
+  ];
+  for (const [label, value] of fields) {
+    const field = element("div");
+    field.append(element("dt", label), element("dd", value));
+    $("metadata-summary").append(field);
+  }
   $("draft-actions").hidden = !isNew;
   $("draft-hint").hidden = !isNew;
   $("latest").hidden = isNew;
@@ -462,6 +481,7 @@ $("tab-info").onclick = () => {
   guard(() => {
     draft = null;
     metaDirty = false;
+    metadataEditing = false;
     showDetail("info");
   });
 };
@@ -472,6 +492,7 @@ $("tab-content").onclick = () => {
   }
   guard(() => {
     metaDirty = false;
+    metadataEditing = false;
     showDetail("content");
   });
 };
@@ -515,6 +536,17 @@ $("tag-input").onkeydown = (e) => {
 };
 $("tag-input").oninput = () => (metaDirty = true);
 $("add-tag").onclick = addTag;
+$("edit-meta").onclick = () => {
+  metadataEditing = true;
+  showDetail("info");
+  $("meta-name").focus();
+};
+$("cancel-meta").onclick = () => {
+  metadataEditing = false;
+  metaDirty = false;
+  showDetail("info");
+  $("edit-meta").focus();
+};
 $("save-meta").onclick = () => {
   if (isNew) {
     $("save-version").onclick();
@@ -540,6 +572,7 @@ $("save-meta").onclick = () => {
     ],
   });
   metaDirty = false;
+  metadataEditing = false;
   showDetail("info");
   toast("基本信息已保存，内容版本数量不变");
 };
@@ -690,8 +723,6 @@ $("retry-list").onclick = () => {
   $("scenario").value = "normal";
   renderCards();
 };
-$("empty-create").onclick = () => $("create").click();
-$("empty-import").onclick = () => $("import").click();
 $("clear-search").onclick = () => {
   $("search").value = "";
   sourceFilter = "all";

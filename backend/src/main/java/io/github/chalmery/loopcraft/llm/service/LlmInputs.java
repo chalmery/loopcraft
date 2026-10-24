@@ -1,14 +1,16 @@
 package io.github.chalmery.loopcraft.llm.service;
 
-import java.net.URI;
-import java.util.Map;
-import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.net.URI;
+import java.util.Map;
+import java.util.Set;
+
 /** 创建和局部更新共用的输入边界。 */
 final class LlmInputs {
-    private LlmInputs() { }
+
+    private LlmInputs() {}
 
     static String text(Object value, String field, int max) {
         if (!(value instanceof String raw) || raw.strip().isEmpty() || raw.strip().length() > max) {
@@ -19,7 +21,9 @@ final class LlmInputs {
 
     static String protocol(Object value) {
         String protocol = text(value, "协议", 40);
-        if (!Set.of("OPENAI_COMPATIBLE", "ANTHROPIC_COMPATIBLE").contains(protocol)) throw invalid("未知协议");
+        if (!Set.of("OPENAI_COMPATIBLE", "ANTHROPIC_COMPATIBLE").contains(protocol)) {
+            throw invalid("未知协议");
+        }
         return protocol;
     }
 
@@ -27,11 +31,21 @@ final class LlmInputs {
         String url = text(value, "API 根地址", 2048);
         try {
             URI uri = URI.create(url);
-            if (!("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme()))
-                    || (uri.getPort() == 0 || uri.getPort() > 65535) || uri.getHost() == null || uri.getRawUserInfo() != null || uri.getRawQuery() != null
-                    || uri.getRawFragment() != null) throw new IllegalArgumentException();
+            boolean httpScheme =
+                    "https".equalsIgnoreCase(uri.getScheme())
+                            || "http".equalsIgnoreCase(uri.getScheme());
+            boolean invalidPort = uri.getPort() == 0 || uri.getPort() > 65535;
+            boolean containsEmbeddedData =
+                    uri.getRawUserInfo() != null
+                            || uri.getRawQuery() != null
+                            || uri.getRawFragment() != null;
+            if (!httpScheme || invalidPort || uri.getHost() == null || containsEmbeddedData) {
+                throw new IllegalArgumentException();
+            }
             String path = uri.getPath().replaceAll("/+$", "");
-            if (path.endsWith("/models") || path.endsWith("/messages") || path.endsWith("/chat/completions")) {
+            if (path.endsWith("/models")
+                    || path.endsWith("/messages")
+                    || path.endsWith("/chat/completions")) {
                 throw new IllegalArgumentException();
             }
             return url.replaceAll("/+$", "");
@@ -41,20 +55,30 @@ final class LlmInputs {
     }
 
     static boolean bool(Object value) {
-        if (!(value instanceof Boolean flag)) throw invalid("状态字段必须为布尔值");
+        if (!(value instanceof Boolean flag)) {
+            throw invalid("状态字段必须为布尔值");
+        }
         return flag;
     }
 
     static String apiKey(Object value) {
-        if (value == null) return "";
-        if (!(value instanceof String raw) || raw.length() > 8192) throw invalid("API Key 格式或长度不合法");
+        if (value == null) {
+            return "";
+        }
+        if (!(value instanceof String raw) || raw.length() > 8192) {
+            throw invalid("API Key 格式或长度不合法");
+        }
         String key = raw.strip();
-        if (key.chars().anyMatch(c -> c < 32 || c > 126)) throw invalid("API Key 含非法字符");
+        if (key.chars().anyMatch(c -> c < 32 || c > 126)) {
+            throw invalid("API Key 含非法字符");
+        }
         return key;
     }
 
     static void fields(Map<String, Object> patch, Set<String> allowed) {
-        if (!allowed.containsAll(patch.keySet())) throw invalid("包含未知字段");
+        if (!allowed.containsAll(patch.keySet())) {
+            throw invalid("包含未知字段");
+        }
     }
 
     static ResponseStatusException invalid(String message) {

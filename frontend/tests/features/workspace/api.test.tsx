@@ -1,8 +1,8 @@
 import { afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { workspaceApi, type Member } from './api'
-import { WorkspaceSection } from './WorkspaceSection'
+import { workspaceApi, type Member } from '@/features/workspace/api'
+import { WorkspaceSection } from '@/features/workspace/WorkspaceSection'
 
 const originalFetch = globalThis.fetch
 

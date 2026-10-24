@@ -1,13 +1,12 @@
+import { response } from '../../fixtures/http'
+import { createDom } from '../../support/dom'
 import { afterEach, beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Window } from 'happy-dom'
 import { act } from 'react'
 import type { Root } from 'react-dom/client'
-import { LlmAccess } from './LlmAccess'
+import { LlmAccess } from '@/features/llm-access/LlmAccess'
 
-const originalFetch = globalThis.fetch
-const originalGlobals = new Map<string, PropertyDescriptor | undefined>()
-let window: Window
+let dispose: () => Promise<void>
 let container: HTMLDivElement
 let root: Root
 let deleted = false
@@ -23,31 +22,11 @@ const source = {
   modelCount: 0,
   updatedAt: '',
 }
-function response(data: unknown) {
-  return Response.json({ code: 0, message: 'success', data })
-}
-function install(name: string, value: unknown) {
-  originalGlobals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
-  Object.defineProperty(globalThis, name, { configurable: true, writable: true, value })
-}
 beforeEach(async () => {
-  window = new Window()
-  for (const [name, value] of Object.entries({
-    window,
-    document: window.document,
-    HTMLElement: window.HTMLElement,
-    HTMLButtonElement: window.HTMLButtonElement,
-    HTMLInputElement: window.HTMLInputElement,
-    Event: window.Event,
-    Element: window.Element,
-    Node: window.Node,
-    IS_REACT_ACT_ENVIRONMENT: true,
-  }))
-    install(name, value)
-  container = document.createElement('div')
-  document.body.append(container)
-  const { createRoot } = await import('react-dom/client')
-  root = createRoot(container)
+  const dom = await createDom()
+  container = dom.container
+  root = dom.root
+  dispose = dom.dispose
   deleted = false
   detailFailure = false
   globalThis.fetch = async (url) => {
@@ -71,15 +50,7 @@ beforeEach(async () => {
   }
 })
 afterEach(async () => {
-  await act(async () => root.unmount())
-  container.remove()
-  await window.happyDOM.close()
-  globalThis.fetch = originalFetch
-  for (const [name, descriptor] of originalGlobals) {
-    if (descriptor) Object.defineProperty(globalThis, name, descriptor)
-    else Reflect.deleteProperty(globalThis, name)
-  }
-  originalGlobals.clear()
+  await dispose()
 })
 async function render() {
   await act(async () => root.render(<LlmAccess tenantId={1} canManage={false} />))

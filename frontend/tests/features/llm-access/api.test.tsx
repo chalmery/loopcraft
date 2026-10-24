@@ -12,6 +12,10 @@ afterEach(() => {
   clearCsrf()
 })
 const model = {
+  contextLimit: null,
+  temperatureSupported: null,
+  temperatureMin: null,
+  temperatureMax: null,
   id: 1,
   sourceId: 2,
   name: '测试',

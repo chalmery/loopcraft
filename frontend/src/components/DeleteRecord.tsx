@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -19,15 +19,21 @@ export function DeleteRecord({
   disabled,
   onDelete,
   onDeleted,
+  onPendingChange,
 }: {
   name: string
   description: string
   disabled?: boolean
   onDelete: () => Promise<unknown>
   onDeleted: () => void
+  onPendingChange?: (pending: boolean) => void
 }) {
   const submit = useSubmitting()
   const [open, setOpen] = useState(false)
+  useEffect(() => {
+    onPendingChange?.(submit.busy)
+    return () => onPendingChange?.(false)
+  }, [submit.busy, onPendingChange])
   async function confirm() {
     await submit.run(async () => {
       await onDelete()

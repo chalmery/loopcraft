@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Building2,
+  Bot,
   Cpu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -38,12 +39,14 @@ import { profileApi } from '@/features/profile/api'
 import { TenantSelection } from '@/features/workspace/TenantSelection'
 import { SkillManagement } from '@/features/skills/SkillManagement'
 import { LlmAccess } from '@/features/llm-access/LlmAccess'
+import { TemplateManagement } from '@/features/agent-templates/TemplateManagement'
 import { WorkspaceSection } from '@/features/workspace/WorkspaceSection'
 import { workspaceApi } from '@/features/workspace/api'
 import { useWorkspaceData } from '@/features/workspace/useWorkspaceData'
 
-type Section = 'skills' | 'llm' | 'workspace' | 'profile' | 'tenants' | 'users'
+type Section = 'templates' | 'skills' | 'llm' | 'workspace' | 'profile' | 'tenants' | 'users'
 const titles: Record<Section, string> = {
+  templates: '模板配置',
   llm: '模型接入',
   skills: 'Skill 管理',
   workspace: '租户设置',
@@ -93,12 +96,17 @@ function AuthenticatedPortal({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [skillDirty, setSkillDirty] = useState(false)
   const [skillPending, setSkillPending] = useState(false)
+  const [templateDirty, setTemplateDirty] = useState(false)
+  const [templatePending, setTemplatePending] = useState(false)
   const navigation = useNavigationGuard({
-    locked: skillDirty,
-    busy: skillPending,
-    onBusy: () => toast.error('Skill 正在处理，请稍后再切换'),
-    onDiscard: () => setSkillDirty(false),
-    title: '放弃尚未保存的 Skill 修改？',
+    locked: skillDirty || templateDirty,
+    busy: skillPending || templatePending,
+    onBusy: () => toast.error('正在处理，请稍后再切换'),
+    onDiscard: () => {
+      setSkillDirty(false)
+      setTemplateDirty(false)
+    },
+    title: '放弃尚未保存的修改？',
     description: '切换页面或租户后，未保存的草稿会丢失。',
   })
   const guard = navigation.guard
@@ -118,6 +126,10 @@ function AuthenticatedPortal({
   ]
 
   const navigationGroups = [
+    {
+      label: 'Agent',
+      items: tenant ? [{ id: 'templates' as const, label: titles.templates, icon: Bot }] : [],
+    },
     {
       label: '插件',
       items: tenant ? [{ id: 'skills' as const, label: titles.skills, icon: Puzzle }] : [],
@@ -310,7 +322,7 @@ function AuthenticatedPortal({
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <Select
               value={tenant ? String(tenant.id) : ''}
-              disabled={busy || skillPending || loading || tenants.length === 0}
+              disabled={busy || skillPending || templatePending || loading || tenants.length === 0}
               onValueChange={(value) =>
                 guard(() => {
                   void switchTenant(value)
@@ -394,6 +406,14 @@ function AuthenticatedPortal({
               canManageBuiltIn={isOwner || user.platformAdmin}
               onDirtyChange={setSkillDirty}
               onPendingChange={setSkillPending}
+            />
+          )}
+          {visibleSection === 'templates' && tenantId !== null && (
+            <TemplateManagement
+              key={tenantId}
+              tenantId={tenantId}
+              onDirtyChange={setTemplateDirty}
+              onPendingChange={setTemplatePending}
             />
           )}
           {visibleSection === 'profile' && (

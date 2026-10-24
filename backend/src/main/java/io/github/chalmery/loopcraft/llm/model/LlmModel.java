@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.OffsetDateTime;
+import java.math.BigDecimal;
 
 /** 连接下的模型配置，不包含运行参数。 */
 @TableName("lc_llm_model")
@@ -25,6 +26,16 @@ public class LlmModel {
     private String origin;
 
     private Boolean enabled;
+
+    /** 最大上下文 Token 数，未知为空。 */
+    private Long contextLimit;
+
+    /** 温度支持情况，未知为空。 */
+    private Boolean temperatureSupported;
+
+    private BigDecimal temperatureMin;
+
+    private BigDecimal temperatureMax;
 
     private OffsetDateTime updatedAt;
 
@@ -90,5 +101,37 @@ public class LlmModel {
 
     public void setUpdatedAt(OffsetDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Long getContextLimit() {
+        return contextLimit;
+    }
+
+    public void setContextLimit(Long contextLimit) {
+        this.contextLimit = contextLimit;
+    }
+
+    public Boolean getTemperatureSupported() {
+        return temperatureSupported;
+    }
+
+    public void setTemperatureSupported(Boolean temperatureSupported) {
+        this.temperatureSupported = temperatureSupported;
+    }
+
+    public BigDecimal getTemperatureMin() {
+        return temperatureMin;
+    }
+
+    public void setTemperatureMin(BigDecimal temperatureMin) {
+        this.temperatureMin = temperatureMin;
+    }
+
+    public BigDecimal getTemperatureMax() {
+        return temperatureMax;
+    }
+
+    public void setTemperatureMax(BigDecimal temperatureMax) {
+        this.temperatureMax = temperatureMax;
     }
 }

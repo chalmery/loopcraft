@@ -68,11 +68,18 @@ import java.util.concurrent.TimeUnit;
             "file:sql/skill/create_skill_version.sql",
             "file:sql/skill/create_skill_tag.sql",
             "file:sql/skill/add_skill_creation_digest.sql",
-            "file:sql/skill/create_skill_object_upload.sql"
+            "file:sql/skill/create_skill_object_upload.sql",
+            "file:sql/llm/create_llm_source.sql",
+            "file:sql/llm/create_llm_model.sql",
+            "file:sql/llm/add_model_capabilities.sql",
+            "file:sql/template/create_agent_template.sql",
+            "file:sql/template/create_template_skill.sql",
+            "file:sql/template/create_template_request.sql"
         })
 @Sql(
         statements =
-                "DROP TABLE IF EXISTS lc_skill_object_upload, lc_skill_tag, lc_skill_version,"
+                "DROP TABLE IF EXISTS lc_template_skill, lc_agent_template, lc_template_request,"
+                        + " lc_llm_model, lc_llm_source, lc_skill_object_upload, lc_skill_tag, lc_skill_version,"
                         + " lc_skill, lc_tenant_member, lc_tenant, lc_user CASCADE",
         executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
 class SkillIT {

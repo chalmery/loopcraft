@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>模板配置 · LoopCraft</title>
+    <link rel="stylesheet" href="styles.css?v=r3" />
+    <script src="app.js?v=r3" defer></script>
+  </head>
+  <body>
+    <aside class="sidebar" aria-label="主导航">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">∞</span>LoopCraft</div>
+      <div class="nav-group">Agent</div>
+      <button class="nav-item active" aria-current="page" id="nav-templates">模板配置</button>
+      <div class="nav-group">插件</div>
+      <span class="nav-item muted">Skill 管理</span>
+      <div class="nav-group">租户配置</div>
+      <span class="nav-item muted">模型接入</span>
+      <span class="nav-item muted">租户设置</span>
+      <div class="sidebar-bottom"><span class="avatar">Y</span><span>示例用户<small>当前租户成员</small></span></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><span>模板配置</span><span class="muted">示例租户 <span aria-hidden="true">⌄</span></span></header>
+      <aside class="reviewbar" aria-label="原型评审工具">
+        <span><strong>设计评审 r3</strong><span class="review-note"> · 示例数据，刷新重置</span></span>
+        <div class="review-tools">
+          <label><input id="readonly" type="checkbox" />只读预览</label>
+          <label><input id="fail-save" type="checkbox" />保存失败</label>
+          <label><span class="sr-only">演示场景</span><select id="scenario"><option value="normal">正常场景</option><option value="empty">空列表</option><option value="loading">列表加载</option><option value="error">加载失败</option><option value="unavailable">关联资源停用</option></select></label>
+        </div>
+      </aside>
+      <main id="app"></main>
+    </div>
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+      <h2 id="confirm-title"></h2><p id="confirm-description" class="muted"></p>
+      <div class="dialog-actions"><button class="secondary" id="confirm-cancel">继续编辑</button><button id="confirm-accept">放弃修改</button></div>
+    </dialog>
+    <div id="toast" role="status" hidden></div>
+  </body>
+</html>

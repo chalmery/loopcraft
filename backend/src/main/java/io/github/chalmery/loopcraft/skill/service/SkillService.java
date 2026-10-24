@@ -18,6 +18,8 @@ import io.github.chalmery.loopcraft.storage.model.FileDownload;
 import io.github.chalmery.loopcraft.storage.model.ObjectLocation;
 import io.github.chalmery.loopcraft.storage.service.FileStorage;
 import io.github.chalmery.loopcraft.storage.service.FileStorageException;
+import io.github.chalmery.loopcraft.template.mapper.TemplateSkillMapper;
+import io.github.chalmery.loopcraft.template.model.TemplateSkill;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,6 +62,8 @@ public class SkillService {
 
     private final SkillObjectUploads uploads;
 
+    private final ObjectProvider<TemplateSkillMapper> templateBindings;
+
     public SkillService(
             IdentityService identity,
             ObjectProvider<SkillMapper> skillMappers,
@@ -67,7 +71,8 @@ public class SkillService {
             ObjectProvider<SkillVersionMapper> versionMappers,
             ObjectProvider<TenantMapper> tenantMappers,
             ObjectProvider<FileStorage> storage,
-            SkillObjectUploads uploads) {
+            SkillObjectUploads uploads,
+            ObjectProvider<TemplateSkillMapper> templateBindings) {
         this.identity = identity;
         this.skillMappers = skillMappers;
         this.tagMappers = tagMappers;
@@ -75,6 +80,7 @@ public class SkillService {
         this.tenantMappers = tenantMappers;
         this.storage = storage;
         this.uploads = uploads;
+        this.templateBindings = templateBindings;
     }
 
     public SkillViews.ListPage list(
@@ -426,6 +432,7 @@ public class SkillService {
         if (revision != skill.getRevision()) {
             throw conflict("基本信息已变化，请刷新后删除");
         }
+        protectTemplateReference(skillId);
         // 保留版本的对象引用；清理失败仍可由后台重新执行，不产生无记录对象。
         skill.setDeleted(true);
         skill.setRevision(skill.getRevision() + 1);
@@ -443,6 +450,7 @@ public class SkillService {
         if (!skill.getDeleted()) {
             return;
         }
+        protectTemplateReference(skillId);
         // 每次最多删除 20 个对象；剩余版本保留引用，后续周期继续处理。
         List<SkillVersion> batch =
                 versions()
@@ -473,6 +481,14 @@ public class SkillService {
             throw notFound();
         }
         return require(actor, tenantId, skillId, true);
+    }
+
+    private void protectTemplateReference(long skillId) {
+        // 已持有 Skill 行锁，与模板绑定写入串行；对象清理开始前拒绝受引用删除。
+        if (templateBindings.getObject().selectCount(Wrappers.<TemplateSkill>lambdaQuery()
+                .eq(TemplateSkill::getSkillId, skillId)) > 0) {
+            throw conflict("该 Skill 已被模板引用，请先移除引用或改为停用");
+        }
     }
 
     private Skill require(UserAccount actor, long tenantId, long skillId, boolean manage) {

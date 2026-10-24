@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>模板配置 · 尺寸评审</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #f5f5f5; color: #0a0a0a; font: 14px system-ui, sans-serif; }
+      header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: #fff; border-bottom: 1px solid #e5e5e5; }
+      header span { margin-right: auto; }
+      button, select { min-height: 36px; border: 1px solid #e5e5e5; border-radius: 8px; background: #fff; padding: 0 12px; color: inherit; font: inherit; cursor: pointer; }
+      button[aria-pressed="true"] { background: #171717; color: #fff; border-color: #171717; }
+      #viewport { margin: 16px auto; position: relative; }
+      iframe { border: 1px solid #e5e5e5; background: #fafafa; transform-origin: top left; display: block; }
+      p { font-size: 12px; color: #737373; text-align: center; padding: 0 16px; }
+    </style>
+  </head>
+  <body>
+    <header><span>Agent 模板 · r3</span><button data-width="1440" aria-pressed="true">1440 桌面</button><button data-width="768" aria-pressed="false">768 平板</button><button data-width="390" aria-pressed="false">390 手机</button><select aria-label="评审页面" id="view"><option value="basic">基本信息</option><option value="tools">工具</option><option value="context">上下文</option><option value="runtime">运行设置</option><option value="list">模板列表</option></select></header>
+    <p>按真实布局宽度渲染并缩放到当前窗口。切换页面会重置示例，修改尺寸保留当前输入。</p>
+    <div id="viewport"><iframe title="模板配置交互原型" id="frame" src="index.html?view=editor"></iframe></div>
+    <script>
+      let width = 1440;
+      const frame = document.getElementById("frame");
+      function resize() {
+        const scale = Math.min(1, (window.innerWidth - 32) / width);
+        frame.style.width = width + "px";
+        frame.style.height = "1000px";
+        frame.style.transform = "scale(" + scale + ")";
+        document.getElementById("viewport").style.width = width * scale + "px";
+        document.getElementById("viewport").style.height = 1000 * scale + "px";
+      }
+      document.querySelectorAll("[data-width]").forEach((button) => button.addEventListener("click", () => {
+        width = Number(button.dataset.width);
+        document.querySelectorAll("[data-width]").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+        resize();
+      }));
+      document.getElementById("view").addEventListener("change", (event) => {
+        frame.src = "index.html" + (event.target.value === "list" ? "" : "?view=editor&tab=" + event.target.value);
+      });
+      window.addEventListener("resize", resize);
+      resize();
+    </script>
+  </body>
+</html>

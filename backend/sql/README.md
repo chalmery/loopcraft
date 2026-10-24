@@ -1,6 +1,6 @@
 # 手动 SQL 变更
 
-业务模块在独立目录维护 SQL。用户与租户模块见 [`identity/README.md`](identity/README.md)。模型接入见 [`llm/README.md`](llm/README.md)，依赖 identity，按 source → model 执行。Skill 管理见 [`skill/README.md`](skill/README.md)，依赖 identity，按 skill → skill_version → skill_tag 执行。一个表一个建表文件，以用途命名，不加数字前缀，例如 `identity/create_user.sql`。
+业务模块在独立目录维护 SQL。用户与租户模块见 [`identity/README.md`](identity/README.md)。模型接入见 [`llm/README.md`](llm/README.md)，依赖 identity，按 source → model 执行。Skill 管理见 [`skill/README.md`](skill/README.md)，依赖 identity，按 skill → skill_version → skill_tag 执行。模板配置见 [`template/README.md`](template/README.md)，依赖 identity、llm、skill 及模型能力增量，按模板 → 固定 Skill 绑定 → 请求幂等记录执行。一个表一个建表文件，以用途命名，不加数字前缀，例如 `identity/create_user.sql`。
 
 表名统一使用 `lc_` 前缀和英文小写下划线，字段同样使用小写下划线；建表文件使用 `create_<业务表名>.sql`，省略表名的 `lc_` 前缀。每张表及每个字段添加简短中文 `COMMENT`，索引、约束和注释随所属表放在同一文件。完整规范见 [`backend/AGENTS.md`](../AGENTS.md#数据库命名与-sql-文件)。
 

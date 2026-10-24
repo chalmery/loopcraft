@@ -30,13 +30,22 @@ function validationMessage(field: Control) {
 export function Form({
   onSubmit,
   onValidationError,
+  validate,
   ...props
-}: Omit<ComponentProps<'form'>, 'noValidate'> & { onValidationError?: () => void }) {
+}: Omit<ComponentProps<'form'>, 'noValidate'> & {
+  onValidationError?: () => void
+  validate?: () => boolean
+}) {
   return (
     <form
       {...props}
       noValidate
       onSubmit={(event) => {
+        if (validate) {
+          if (!validate()) event.preventDefault()
+          else onSubmit?.(event)
+          return
+        }
         const fields = event.currentTarget.querySelectorAll<Control>('input, textarea, select')
         for (const field of fields) {
           if (!field.willValidate) continue

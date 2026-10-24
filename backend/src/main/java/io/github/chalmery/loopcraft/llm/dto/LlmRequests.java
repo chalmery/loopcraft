@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 /** 写入参数；PATCH 另外按字段是否出现区分保留与非法空值。 */
 public final class LlmRequests {
@@ -30,7 +31,14 @@ public final class LlmRequests {
     }
 
     public record ModelInput(
-            @NotBlank @Size(max = 80) String name, @NotBlank @Size(max = 160) String modelId) {}
+            @NotBlank @Size(max = 80) String name,
+            @NotBlank @Size(max = 160) String modelId,
+            Long contextLimit, Boolean temperatureSupported,
+            BigDecimal temperatureMin, BigDecimal temperatureMax) {
+        public ModelInput(String name, String modelId) {
+            this(name, modelId, null, null, null, null);
+        }
+    }
 
     public record ImportModels(
             @NotEmpty @Size(max = 100) List<@NotNull @Valid ModelInput> models) {}

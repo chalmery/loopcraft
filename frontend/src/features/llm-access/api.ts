@@ -14,7 +14,13 @@ export type Source = {
   modelCount: number
   updatedAt: string
 }
-export type Model = {
+export type ModelCapabilities = {
+  contextLimit: number | null
+  temperatureSupported: boolean | null
+  temperatureMin: number | null
+  temperatureMax: number | null
+}
+export type Model = ModelCapabilities & {
   id: number
   sourceId: number
   name: string
@@ -56,7 +62,19 @@ export const isModel: Validator<Model> = (v): v is Model =>
   typeof v.modelId === 'string' &&
   (v.origin === 'MANUAL' || v.origin === 'DISCOVERY') &&
   typeof v.enabled === 'boolean' &&
-  typeof v.updatedAt === 'string'
+  typeof v.updatedAt === 'string' &&
+  isModelCapabilities(v)
+export function isModelCapabilities(v: unknown): v is ModelCapabilities {
+  return (
+    record(v) &&
+    (v.contextLimit === null || (natural(v.contextLimit) && v.contextLimit > 0)) &&
+    (v.temperatureSupported === null || typeof v.temperatureSupported === 'boolean') &&
+    (v.temperatureMin === null ||
+      (typeof v.temperatureMin === 'number' && Number.isFinite(v.temperatureMin))) &&
+    (v.temperatureMax === null ||
+      (typeof v.temperatureMax === 'number' && Number.isFinite(v.temperatureMax)))
+  )
+}
 const isCandidate: Validator<Candidate> = (v): v is Candidate =>
   record(v) && typeof v.name === 'string' && typeof v.modelId === 'string'
 
@@ -89,13 +107,16 @@ export const llmApi = {
     request(path(tenantId, sourceId), isNull, { method: 'DELETE' }),
   models: (tenantId: number, sourceId: number, page: number, q = '', size = 20) =>
     request(`${path(tenantId, sourceId)}/models${queryString({ page, size, q })}`, isPage(isModel)),
-  createModel: (tenantId: number, sourceId: number, input: Candidate) =>
-    request(`${path(tenantId, sourceId)}/models`, isModel, body(input)),
+  createModel: (
+    tenantId: number,
+    sourceId: number,
+    input: Candidate & Partial<ModelCapabilities>,
+  ) => request(`${path(tenantId, sourceId)}/models`, isModel, body(input)),
   updateModel: (
     tenantId: number,
     sourceId: number,
     id: number,
-    input: Partial<Candidate> & { enabled?: boolean },
+    input: Partial<Candidate & ModelCapabilities> & { enabled?: boolean },
   ) => request(`${path(tenantId, sourceId)}/models/${id}`, isModel, body(input, 'PATCH')),
   deleteModel: (tenantId: number, sourceId: number, id: number) =>
     request(`${path(tenantId, sourceId)}/models/${id}`, isNull, { method: 'DELETE' }),

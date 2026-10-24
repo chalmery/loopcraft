@@ -49,7 +49,8 @@ import java.util.concurrent.TimeUnit;
             "file:sql/identity/create_tenant.sql",
             "file:sql/identity/create_tenant_member.sql",
             "file:sql/llm/create_llm_source.sql",
-            "file:sql/llm/create_llm_model.sql"
+            "file:sql/llm/create_llm_model.sql",
+            "file:sql/llm/add_model_capabilities.sql"
         })
 @Sql(
         statements =

@@ -13,6 +13,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly code: number,
+    readonly field?: string,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -56,7 +57,14 @@ async function parse<T>(response: Response, validate: Validator<T>): Promise<T> 
     data: body.data,
   }
   if (!response.ok || envelope.code !== 0)
-    throw new ApiError(envelope.message, response.status, envelope.code)
+    throw new ApiError(
+      envelope.message,
+      response.status,
+      envelope.code,
+      isRecord(envelope.data) && typeof envelope.data.field === 'string'
+        ? envelope.data.field
+        : undefined,
+    )
   if (!validate(envelope.data)) throw new Error('服务返回的数据格式不正确')
   return envelope.data
 }

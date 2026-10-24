@@ -30,6 +30,7 @@ Next.js 构建包含 SSR 服务，需要 Node.js，不能作为纯静态站点�
 - `src/features/auth/`：登录与会话。
 - `src/features/profile/`：个人资料和右上角账户菜单。
 - `src/features/workspace/`：租户选择、租户设置和租户请求。
+- `src/features/agent-templates/`：租户共享模板列表、四页签配置、模型/Skill 分页选择及固定版本绑定。
 - `src/features/admin/`：租户管理与账号管理，独立分页列表、右侧栏新增/编辑和删除确认。
 - `src/features/portal/`：登录、租户选择和后台各功能之间的页面流程组合。
 - `src/components/ui/`：从 shadcn 官方 registry 按需引入并定制的基础组件。

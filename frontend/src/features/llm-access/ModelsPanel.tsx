@@ -129,6 +129,11 @@ export function ModelsPanel({
                       >
                         {model.modelId}
                       </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {model.contextLimit
+                          ? `${model.contextLimit.toLocaleString()} Token 上限`
+                          : '上下文上限待补齐'}
+                      </div>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       {model.origin === 'MANUAL' ? '手动添加' : '查询导入'}

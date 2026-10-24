@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -177,7 +178,7 @@ public class LlmAccessService {
     @Transactional
     public void deleteSource(UserAccount actor, long tenantId, long sourceId) {
         source(actor, tenantId, sourceId, true, true);
-        // 尚无模板模块；未来引用由限制删除外键保护，任一步失败将回滚整个事务。
+        // 模板的限制删除外键保护模型；任一引用存在时整个删除事务回滚。
         models().delete(
                         Wrappers.<LlmModel>lambdaQuery()
                                 .eq(LlmModel::getTenantId, tenantId)
@@ -233,7 +234,8 @@ public class LlmAccessService {
             Map<String, Object> patch) {
         source(actor, tenantId, sourceId, true, true);
         LlmModel model = model(tenantId, sourceId, modelId);
-        LlmInputs.fields(patch, Set.of("name", "modelId", "enabled"));
+        LlmInputs.fields(patch, Set.of("name", "modelId", "enabled", "contextLimit",
+                "temperatureSupported", "temperatureMin", "temperatureMax"));
         if (patch.containsKey("name")) {
             model.setName(LlmInputs.text(patch.get("name"), "模型名称", 80));
         }
@@ -243,13 +245,21 @@ public class LlmAccessService {
         if (patch.containsKey("enabled")) {
             model.setEnabled(LlmInputs.bool(patch.get("enabled")));
         }
+        capabilities(model, patch);
         model.setUpdatedAt(OffsetDateTime.now());
         models().update(
-                        model,
                         Wrappers.<LlmModel>lambdaUpdate()
                                 .eq(LlmModel::getTenantId, tenantId)
                                 .eq(LlmModel::getSourceId, sourceId)
-                                .eq(LlmModel::getId, modelId));
+                                .eq(LlmModel::getId, modelId)
+                                .set(LlmModel::getName, model.getName())
+                                .set(LlmModel::getModelId, model.getModelId())
+                                .set(LlmModel::getEnabled, model.getEnabled())
+                                .set(LlmModel::getContextLimit, model.getContextLimit())
+                                .set(LlmModel::getTemperatureSupported, model.getTemperatureSupported())
+                                .set(LlmModel::getTemperatureMin, model.getTemperatureMin())
+                                .set(LlmModel::getTemperatureMax, model.getTemperatureMax())
+                                .set(LlmModel::getUpdatedAt, model.getUpdatedAt()));
         touchSource(tenantId, sourceId);
         return view(model);
     }
@@ -330,6 +340,12 @@ public class LlmAccessService {
         model.setModelId(LlmInputs.text(input.modelId(), "模型 ID", 160));
         model.setOrigin(origin);
         model.setEnabled(true);
+        var metadata = new HashMap<String, Object>();
+        metadata.put("contextLimit", input.contextLimit());
+        metadata.put("temperatureSupported", input.temperatureSupported());
+        metadata.put("temperatureMin", input.temperatureMin());
+        metadata.put("temperatureMax", input.temperatureMax());
+        capabilities(model, metadata);
         model.setUpdatedAt(OffsetDateTime.now());
         models().insert(model);
         return view(model);
@@ -414,7 +430,55 @@ public class LlmAccessService {
                 model.getModelId(),
                 model.getOrigin(),
                 model.getEnabled(),
-                model.getUpdatedAt());
+                model.getUpdatedAt(), model.getContextLimit(), model.getTemperatureSupported(),
+                model.getTemperatureMin(), model.getTemperatureMax());
+    }
+
+    private void capabilities(LlmModel model, Map<String, Object> values) {
+        if (values.containsKey("contextLimit")) {
+            BigDecimal limit = decimal(values.get("contextLimit"));
+            try {
+                Long tokens = limit == null ? null : limit.longValueExact();
+                if (tokens != null && (tokens <= 0 || tokens > 9007199254740991L)) {
+                    throw LlmInputs.invalid("上下文上限必须为正整数");
+                }
+                model.setContextLimit(tokens);
+            } catch (ArithmeticException exception) {
+                throw LlmInputs.invalid("上下文上限必须为正整数");
+            }
+        }
+        if (values.containsKey("temperatureSupported")) {
+            model.setTemperatureSupported(values.get("temperatureSupported") == null
+                    ? null : LlmInputs.bool(values.get("temperatureSupported")));
+        }
+        if (values.containsKey("temperatureMin")) {
+            model.setTemperatureMin(decimal(values.get("temperatureMin")));
+        }
+        if (values.containsKey("temperatureMax")) {
+            model.setTemperatureMax(decimal(values.get("temperatureMax")));
+        }
+        BigDecimal min = model.getTemperatureMin();
+        BigDecimal max = model.getTemperatureMax();
+        if ((min == null) != (max == null) || (min != null
+                && (!Boolean.TRUE.equals(model.getTemperatureSupported())
+                    || min.signum() < 0 || max.compareTo(min) < 0
+                    || max.compareTo(BigDecimal.valueOf(100)) > 0))) {
+            throw LlmInputs.invalid("温度范围需要在模型支持温度时成对填写，且上限不小于下限");
+        }
+    }
+
+    private BigDecimal decimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (!(value instanceof Number)) {
+            throw LlmInputs.invalid("模型能力字段必须为数值或空值");
+        }
+        try {
+            return new BigDecimal(value.toString());
+        } catch (NumberFormatException exception) {
+            throw LlmInputs.invalid("模型能力字段必须为有限数值");
+        }
     }
 
     private LlmSourceMapper sources() {

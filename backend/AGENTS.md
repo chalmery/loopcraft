@@ -60,6 +60,7 @@
 - 主键通常命名为 `id`，关联列使用 `<业务对象>_id`；创建/更新时间按需使用 `created_at`、`updated_at`。索引和约束名称采用能看出所属表或用途的小写下划线命名，避免无意义缩写。
 - 每张表、每个字段都通过 PostgreSQL `COMMENT ON TABLE` / `COMMENT ON COLUMN` 添加简短中文说明；状态、角色、单位等不直观字段说明取值含义。中文用于说明，数据库标识符保留英文。
 - SQL 按业务模块放在 `sql/<模块>/`，一个表一个建表文件，使用 `create_<业务表名>.sql` 命名，文件名省略 `lc_` 前缀，不加 `001_` 等数字前缀。例如 `sql/identity/create_user.sql`、`create_tenant.sql`、`create_tenant_member.sql`。该表的索引、约束和注释放在同一文件。
+- 新增或修改表结构时，同步更新 `docs/database-schema.md` 的 ER 图与表清单，与 `sql/` 实际结构保持一致；评审表结构变更时以该文件呈现整体关系。
 - 执行顺序与跨表依赖写在模块 README，例如先用户、租户，再成员关系；共享环境执行过的文件保持不变，后续结构升级新建用途明确、无数字前缀的文件，并更新 README。应用启动不自动执行 SQL，不引入 Flyway；脚本中不放真实账号或凭证。
 
 ## 实现约定

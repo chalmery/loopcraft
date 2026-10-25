@@ -118,17 +118,19 @@ function AuthenticatedPortal({
     ((section === 'tenants' || section === 'users') && !user.platformAdmin)
       ? 'profile'
       : section
-  const tenantLinks = [
-    ...(tenant ? [{ id: 'llm' as const, label: titles.llm, icon: Cpu }] : []),
-    ...(isOwner
-      ? [{ id: 'workspace' as const, label: titles.workspace, icon: PanelsTopLeft }]
-      : []),
-  ]
+  const tenantLinks = isOwner
+    ? [{ id: 'workspace' as const, label: titles.workspace, icon: PanelsTopLeft }]
+    : []
 
   const navigationGroups = [
     {
       label: 'Agent',
-      items: tenant ? [{ id: 'templates' as const, label: titles.templates, icon: Bot }] : [],
+      items: tenant
+        ? [
+            { id: 'templates' as const, label: titles.templates, icon: Bot },
+            { id: 'llm' as const, label: titles.llm, icon: Cpu },
+          ]
+        : [],
     },
     {
       label: '插件',

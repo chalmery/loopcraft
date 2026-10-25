@@ -1,8 +1,8 @@
 # ReAct Agent 主流程：Harness 源码调研与 LoopCraft 能力取舍
 
-状态：**讨论中，等待用户拍板；未批准开发**
+状态：**关键决策已拍板（2026-10-25），实施未开始、未授权开工**
 
-调研日期：2026-10-18
+调研日期：2026-10-18；2026-10-25 按当前代码对齐起点与模型接入方式，拍板第 12 节全部决策，并于同日修订 D6/D12：首批工具改为 Skill 只读工具，移除 add/multiply 演示工具。
 
 调研方式：阅读本地五个参考仓库的固定提交、LoopCraft 当前文件，以及 Spring AI 2.0.1 源码。未运行参考项目、参考测试或真实模型。
 
@@ -10,7 +10,7 @@
 
 建议 LoopCraft 第一阶段做一个**项目自己驱动、单次请求内运行、工具串行执行、有明确预算和终止结果的 ReAct 循环**。
 
-保留 Spring AI 的模型、消息和工具描述类型；模型每次只调用一次，执行哪些工具、何时再调用模型、何时停止，由 LoopCraft 显式决定。第一阶段先用少量无副作用的本地工具把链路跑通，再考虑业务工具和交互体验。
+保留 Spring AI 的模型、消息和工具描述类型；模型每次只调用一次，执行哪些工具、何时再调用模型、何时停止，由 LoopCraft 显式决定。第一阶段用两个无副作用的只读 Skill 工具（list_skills / read_skill）把链路跑通，再考虑业务工具和交互体验。
 
 本次建议的核心取舍：
 
@@ -26,22 +26,22 @@
 | 达到轮次上限 | 硬停止，不额外请求“总结一次” | 预算容易解释和验证 |
 | 高级能力 | 暂缓并发、SSE、运行中插话、Hooks、压缩、持久化恢复和子 Agent | 先验证核心闭环；以后按具体场景增加 |
 
-以上均为**建议，不是已确认决策**。拍板清单见第 12 节。
+第 1 节取舍与第 12 节 D1–D14 已于 2026-10-25 对话拍板确认；开工前以第 13 节建议顺序另行确认实施范围。
 
 ## 2. LoopCraft 当前真实起点
 
-本节以调研时的工作区文件为准，包含尚未提交的文件；调研期间可能有其他工作同步进行。它不是某个历史提交的完整状态，也不把别的 Agent 项目视作本项目现状。
+（2026-10-25 更新）本节以当前工作区与已提交代码为准。调研初稿描述的 `Agent.java`、`AgentController.java`、`AgentProperties.java` 与 `application-llm.yml` 是当时未提交的工作区文件，现均已不存在，也未进入 Git 历史。
 
-| 当前文件 | 已有能力 | 尚未具备的能力 |
+| 当前模块/文件 | 已有能力 | 与 ReAct 循环的关系 |
 | --- | --- | --- |
-| [Agent.java](../../../backend/src/main/java/io/github/chalmery/loopcraft/agent/Agent.java) | 组装 system/user 消息，调用一次 `ChatModel.call`，提取文本；遇到工具调用直接报错 | 无循环、工具执行、消息回填或会话历史 |
-| [AgentController.java](../../../backend/src/main/java/io/github/chalmery/loopcraft/web/AgentController.java) | `POST /api/agent/chat`，输入 `message`，成功返回 `answer`；未启用模型时返回 503，模型错误映射为 502 | 无 SSE、run 查询或取消接口 |
-| [AgentProperties.java](../../../backend/src/main/java/io/github/chalmery/loopcraft/config/AgentProperties.java) | 校验 `maxIterations`、`runTimeout`、`toolTimeout` | 绑定与校验配置不代表执行时已落实预算 |
-| [application.yml](../../../backend/src/main/resources/application.yml) | 当前预算为 12 次迭代、120 秒运行时间、15 秒工具时间；关闭 ChatClient 自动工具调用及内容观测配置 | 无 Agent 运行状态机、运行轨迹或预算执行机制 |
-| [application-llm.yml](../../../backend/src/main/resources/application-llm.yml) | 显式启用真实模型；当前请求超时默认 45 秒，SDK 重试配置为 0 | 无整个运行剩余时间对单次模型请求的动态约束 |
-| [pom.xml](../../../backend/pom.xml) | Java 25、Spring Boot 4.1.1、Spring AI 2.0.1，MVC 和 PostgreSQL/MyBatis-Plus 基础设施 | 无 Agent 业务表或恢复机制 |
+| `llm` 模块（`LlmSource`、`LlmModel`、`LlmAccessService`、`LlmCredentialCipher`、`LlmModelDiscovery`） | 租户级供应商连接（OPENAI_COMPATIBLE / ANTHROPIC_COMPATIBLE 协议、baseUrl、加密 API Key）与模型目录（modelId、上下文上限、温度范围）的 CRUD、发现与幂等导入 | 模型输入端数据已齐；尚无把配置构建为可调用 `ChatModel` 的工厂 |
+| `template` 模块（`AgentTemplate`、`TemplateSkill`） | 租户共享模板：`modelId`、`systemPrompt`、`temperature`、`maxIterations`、`timeoutMinutes` 必填，另存 `contextBudgetTokens`、`summaryModelId`、`keepRecentMessages` 与 Skill 关联（带版本号和排序） | 运行配置输入端已齐；只保存配置，不执行任务 |
+| `skill` 模块（`Skill`、`SkillVersion`、`SkillObjectUpload`） | 版本化技能文档包与 RustFS 对象存储 | 首版以只读工具消费（D12） |
+| `identity` / `storage` 模块 | 账号、租户、成员权限；对象存储 | 运行的权限与存储边界沿用 |
+| [application.yml](../../../backend/src/main/resources/application.yml) | 无 `loopcraft.agent` 预算配置 | 模型轮次与运行时长改由模板字段提供；工具预算等全局配置在实施时新增 |
+| [pom.xml](../../../backend/pom.xml)（未提交改动） | 引入 spring-ai-bom、spring-ai-openai、spring-ai-anthropic，注释明确按租户动态构建模型 | 随 ChatModel 工厂开发一并收尾提交 |
 
-因此，本次讨论的是把“单次模型调用”扩展成“受控的模型与工具循环”。数据库选型已经存在，业务会话持久化仍是另一项需求。
+因此，本次实施是把“三个管理模块 + 空白的 agent 包”补成“按租户模板驱动的受控模型与工具循环”。数据库选型已经存在，业务会话持久化仍是另一项需求。
 
 ## 3. 调研范围和证据边界
 
@@ -61,19 +61,19 @@
 
 ## 4. 先用一个例子统一“主循环”的含义
 
-假设注册两个无副作用的演示工具 `add(a,b)` 和 `multiply(a,b)`，请求是“使用工具计算 `(18+24)*3`”：
+假设模板绑定了技能 `notes-helper`（版本 3），注册只读工具 `list_skills()` 和 `read_skill(slug)`，请求是“按笔记技能的规范总结这段内容”：
 
 ```text
 初始消息：system + user
-第 1 次模型调用：assistant 发出 add(18,24)，call_id=c1
-运行时：校验并执行 add，记录 tool(c1, 42)
-第 2 次模型调用：携带完整历史，assistant 发出 multiply(42,3)，call_id=c2
-运行时：校验并执行 multiply，记录 tool(c2, 126)
-第 3 次模型调用：携带完整历史，assistant 返回正常最终文本 126
+第 1 次模型调用：assistant 发出 list_skills()，call_id=c1
+运行时：校验并执行 list_skills，记录 tool(c1, [{"slug":"notes-helper","name":"笔记助手","description":"…","version":3}])
+第 2 次模型调用：携带完整历史，assistant 发出 read_skill("notes-helper")，call_id=c2
+运行时：校验并执行 read_skill，记录 tool(c2, 绑定版本 3 的文档内容)
+第 3 次模型调用：携带完整历史，assistant 返回基于技能内容的最终文本
 运行结束：COMPLETED，模型调用 3 次，工具调用 2 次
 ```
 
-不能只把 `42` 拼进用户文本，也不能丢掉带 `c1` 的 assistant 消息。模型需要看到自己提出的调用及与它一一对应的工具结果，才能继续。演示验收用假模型固定返回上述序列；真实模型是否选择使用算术工具，不作为确定性测试条件。
+不能只把技能清单或文档结论拼进用户文本，也不能丢掉带 `c1` 的 assistant 消息。模型需要看到自己提出的调用及与它一一对应的工具结果，才能继续。演示验收用假模型固定返回上述序列，技能内容由测试预置；真实模型是否选择调用工具，不作为确定性测试条件。
 
 本文约定：
 
@@ -175,20 +175,22 @@
 
 ### 7.1 对外行为和责任边界
 
-用户仍向 `POST /api/agent/chat` 提交文本。服务端创建一次独立 run；模型可以直接回答，也可以提出一个或多个工具调用。运行时执行后再请求模型，直到正常文本结束或触发终止条件。
+用户向 `POST /api/agent/chat` 提交 `templateId` 与 `message`（D14）。服务端校验当前租户下模板 → 模型 → 来源链路后创建一次独立 run；模型可以直接回答，也可以提出一个或多个工具调用。运行时执行后再请求模型，直到正常文本结束或触发终止条件。
 
 建议初期只形成以下职责，不为了层次创建转发类：
 
 ```text
-web/AgentController
-    请求校验、HTTP 错误映射
+agent/controller/AgentController
+    请求校验（templateId、message）、模板与模型链路解析、HTTP 错误映射
         ↓
 agent/Agent
     显式循环、局部 messages、计数、deadline、终止结果
-        ├── Spring AI ChatModel：一次模型调用
+        ├── llm 边界的 ChatModelFactory：按本次模板引用构建 ChatModel（校验链路、解密凭证、按协议选择适配器）
         └── tool/ToolExecutor：工具查找、输入校验、受限执行、结果整理
                   └── 本次运行固定的 Map<String, ToolCallback>
 ```
+
+Controller 放在 `agent` 包内而非 `web`：仓库后端约定业务 Controller 归属各自功能包，`web` 仅保留跨模块 HTTP 基础能力。模型链路校验规则：模板不存在或不属于当前租户返回 404（沿用租户资源语义）；引用的模型或来源被禁用、已删除返回 503，不静默回退其他模型；凭证解密只发生在本次运行构建链路内，不进入日志。
 
 `Agent` 可以继续沿用现有名字，不必同时增加 AgentRunner、AgentService 和 AgentManager。`ToolExecutor` 的存在是因为它拥有真实的执行约束，不是为了转发一行调用。第一阶段也不增加模型协议包装层；具体配置留在现有模型接入边界。
 
@@ -235,6 +237,8 @@ flowchart TD
 
 每次模型请求都携带同一组允许使用的工具定义。收到工具调用后，保留模型返回的**完整 `AssistantMessage`**，包括 tool calls 和 provider metadata；再添加带相同 id/name 的 `ToolResponseMessage.ToolResponse`。全部工具结果配齐后才进行下一次模型调用。
 
+模型实例按请求构建：运行入口按模板引用读取租户内的 `LlmModel` 与 `LlmSource`，解密 API Key 并按协议构建 `OpenAiChatModel` 或 `AnthropicChatModel`（`pom.xml` 中 spring-ai-openai / spring-ai-anthropic 依赖随本阶段收尾提交）。不注册全局模型 Bean，不在共享实例上修改单次请求的超时或选项；同一 run 内复用同一实例。
+
 Spring AI 2.0.1 已在本机 sources.jar 核实：
 
 - `AssistantMessage.ToolCall(id,type,name,arguments)` 与 `ToolResponseMessage.ToolResponse(id,name,responseData)` 可表达配对；`ToolCallback` 可复用为工具定义与执行入口。 [源码：调用消息](https://github.com/spring-projects/spring-ai/blob/v2.0.1/spring-ai-model/src/main/java/org/springframework/ai/chat/messages/AssistantMessage.java#L111) [源码：工具结果](https://github.com/spring-projects/spring-ai/blob/v2.0.1/spring-ai-model/src/main/java/org/springframework/ai/chat/messages/ToolResponseMessage.java#L75) [源码：工具接口](https://github.com/spring-projects/spring-ai/blob/v2.0.1/spring-ai-model/src/main/java/org/springframework/ai/tool/ToolCallback.java#L33)
@@ -242,13 +246,18 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 - 此版本 `OpenAiChatModel.internalCall` 返回单次 ChatResponse；自动多轮工具执行走 ChatClient 的 ToolCallingAdvisor 机制。继续直接使用 `ChatModel.call`，保持 `spring.ai.chat.client.tool-calling.enabled=false`，不手动装配 Advisor，也不引用 1.x 的 `internalToolExecutionEnabled(false)` 写法。 [源码：单次调用](https://github.com/spring-projects/spring-ai/blob/v2.0.1/models/spring-ai-openai/src/main/java/org/springframework/ai/openai/OpenAiChatModel.java#L196) [源码：自动工具配置](https://github.com/spring-projects/spring-ai/blob/v2.0.1/auto-configurations/models/spring-ai-autoconfigure-model-chat-client/src/main/java/org/springframework/ai/model/chat/client/autoconfigure/ChatClientAutoConfiguration.java#L125)
 - OpenAI 适配器会从 assistant metadata 回放 reasoning content。不要重建成只有文本和工具名的消息，从而丢掉必要信息；也不要把 provider 字段解析散落到循环中。 [源码：元数据回放](https://github.com/spring-projects/spring-ai/blob/v2.0.1/models/spring-ai-openai/src/main/java/org/springframework/ai/openai/OpenAiChatModel.java#L676)
 
-`ToolCallback` 并不自动等于任意 JSON Schema 已经完成运行时验证。首版推荐两个固定、强类型演示工具：执行入口严格解析 JSON，拒绝缺失字段、错误类型及越界值，随后做业务参数校验；不先引入完整的通用 Schema 执行平台。未来接入动态 MCP 工具时，再单独讨论通用 JSON Schema 校验和能力发现。
+`ToolCallback` 并不自动等于任意 JSON Schema 已经完成运行时验证。首版注册两个固定、强类型的只读 Skill 工具（语义见 9.1）：执行入口严格解析 JSON，拒绝缺失字段、错误类型及越界值，随后做业务参数校验（如 slug 必须在当前模板绑定集合内）；不先引入完整的通用 Schema 执行平台。未来接入动态 MCP 工具时，再单独讨论通用 JSON Schema 校验和能力发现。
 
 ## 9. 能力取舍与异常策略
 
 ### 9.1 工具注册、调用和结果
 
 - 使用服务端明确注册的工具白名单；提供给模型的定义与实际可执行快照来自同一份表。启动或装配时拒绝重名。模型不能通过名字访问任意 Bean、类、文件、URL 或命令。
+- 首批工具为两个只读 Skill 工具，全局注册；`read_skill` 的可读范围按当前模板的 `TemplateSkill` 绑定解析：
+  - `list_skills()`：返回当前模板绑定技能的 `slug`、`name`、`description` 与绑定版本 `version`，不返回文档内容。
+  - `read_skill(slug)`：在租户范围内读取该 slug 绑定 `versionNumber` 版本的文档内容（数据库查询 + 对象存储读取）。slug 未绑定到当前模板时不执行，按参数校验失败回填错误观察。
+  - 对象存储读取失败属于可预期只读查询失败：按 9.4 回填工具错误，模型可解释失败或改走其他路径，不终止 run。
+  - 文档内容受 `maxToolResultChars` 约束，超限截断为带 `truncated` 标识的合法 JSON envelope。
 - 同一批次先检查 call id 非空、批内及本 run 内不重复、累计调用数未超限，再开始执行。遇到 id 冲突首版直接失败，不仿照 OMP 自动修复 id。
 - 支持单响应多个调用，按模型返回顺序执行；工具之间的参数依赖由下一次模型调用传递，不支持同批次的占位引用。
 - 未知工具、参数 JSON 错误、参数校验失败：该调用不执行，回填带原 call id 的安全错误结果。独立的后续调用可以继续；模型在剩余预算内重新生成正确调用，算新调用，不能由运行时悄悄修复后执行。
@@ -260,14 +269,14 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 
 | 预算 | 建议 | 语义 |
 | --- | --- | --- |
-| maxIterations | 沿用 12 | 所有已发起模型调用都计数；最后一次正常文本可成功；若第 12 次仍要求工具，硬停止且不再执行该批工具，因为已无下一次观察预算 |
-| runTimeout | 沿用 120 秒 | 整个 run 的总等待预算，包含模型、工具和所有排队时间 |
-| toolTimeout | 沿用 15 秒 | 单工具上限，还要取 run 剩余时间的较小值 |
-| 模型请求超时 | 当前 45 秒与 run 剩余时间取较小值 | run 只剩 8 秒时，不能继续完整等待 45 秒 |
-| maxToolCalls | 建议新增，初值 32，待确认 | 限制一个 run 中模型提出的工具调用总数，包含非法调用；整批会超限时不执行该批，不挑部分执行 |
-| maxToolResultChars | 建议新增，初值 8000，待确认 | 每个发给模型的工具结果内容上限，不等于精确 token 上限 |
+| maxIterations | 以模板必填字段为准，运行入口要求 ≥1（0 视为配置错误拒绝）；全局不再维护模型轮次配置 | 所有已发起模型调用都计数；最后一次正常文本可成功；若最后一次仍要求工具，硬停止且不再执行该批工具，因为已无下一次观察预算 |
+| runTimeout | 以模板 `timeoutMinutes` 折算秒数为准，运行入口要求 >0 | 整个 run 的总等待预算，包含模型、工具和所有排队时间 |
+| toolTimeout | 全局配置，实施时新增，建议初值 15 秒 | 单工具上限，还要取 run 剩余时间的较小值 |
+| 模型请求超时 | 全局配置，实施时新增，建议初值 45 秒；与 run 剩余时间取较小值 | run 只剩 8 秒时，不能继续等待完整 45 秒 |
+| maxToolCalls | 新增全局配置，初值 32（D9 已确认） | 限制一个 run 中模型提出的工具调用总数，包含非法调用；整批会超限时不执行该批，不挑部分执行 |
+| maxToolResultChars | 新增全局配置，初值 8000（D9 已确认） | 每个发给模型的工具结果内容上限，不等于精确 token 上限 |
 
-新数值是便于首版验收的建议值，没有来自参考项目的通用最优依据。12 次模型调用通常最多对应 11 个可执行工具批次，因为最终答案也占一次模型调用。不同轮次预算方案的代价应明确，而不是上线后再解释 off-by-one。
+新数值是便于首版验收的建议值，没有来自参考项目的通用最优依据。maxIterations 为 N 时通常最多对应 N-1 个可执行工具批次，因为最终答案也占一次模型调用。不同轮次预算方案的代价应明确，而不是上线后再解释 off-by-one。
 
 工具结果字符上限不能保证所有模型的上下文一定够用。首版不自动压缩；若模型返回上下文超限，报告 CONTEXT_LIMIT 并结束。后续出现长会话需求时再设计 token 预估、输入预算和成组裁剪，不能删除孤立的 assistant 或 tool 消息。
 
@@ -277,7 +286,7 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 
 阻塞 `ChatModel.call` 或工具调用需要可等待、可发出中断的执行句柄。超时后停止派发新工作，调用取消并释放等待资源；不能把共享 ChatModel 的配置改成当前请求的剩余超时，从而影响其他请求。
 
-**Future.get 超时或 cancel(true) 只代表本地不再等待/请求中断，不证明下游停止或副作用已回滚。** 具体 HTTP 客户端和工具的取消行为必须通过离线延迟桩验证。首版限制为无副作用演示工具；若执行状态不能确定，返回明确的执行不确定错误，不自动重试。
+**Future.get 超时或 cancel(true) 只代表本地不再等待/请求中断，不证明下游停止或副作用已回滚。** 具体 HTTP 客户端和工具的取消行为必须通过离线延迟桩验证。首版限制为无副作用只读工具；若执行状态不能确定，返回明确的执行不确定错误，不自动重试。
 
 首版内部取消处理应有测试，但不承诺同步 MVC 能可靠识别浏览器断连，也不因此新增取消 API。显式 `runId + cancel`、连接关闭传播和后台任务生命周期放到后续交互方案讨论。
 
@@ -298,7 +307,7 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 
 ### 9.5 HTTP 与可观察性
 
-建议先保持同步接口和成功结构 `ChatReply(answer)`，运行结果内部保留 status、reason、模型次数和工具次数；不向现有成功 JSON 强塞完整轨迹。失败使用现有 ProblemDetail 机制，建议约定：模型协议/模型服务错误 502，预算耗尽 422，超时 504，模型未启用仍 503。实际映射是待确认的产品/API 决策。
+建议先保持同步接口和成功结构 `ChatReply(answer)`，运行结果内部保留 status、reason、模型次数和工具次数；不向现有成功 JSON 强塞完整轨迹。失败使用现有 ProblemDetail 机制，已按 D11 确认：模型协议/模型服务错误 502，预算耗尽 422，超时 504。模板链路语义见 7.1：模板不存在或不属于当前租户 404；引用的模型或来源被禁用、已删除 503，不静默回退。
 
 诊断至少区分“模型提出”“通过校验”“已开始”“成功/失败/未执行”，保留调用 id、工具名、耗时和计数即可。默认不记录用户全文、模型思维内容、工具参数或完整结果。模型结束、工具结束和整个 run 结束分别统计，不把它们混成一个成功标记。
 
@@ -311,7 +320,9 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 | 完整消息与 call id 配对 | 纳入 | 后续持久化仍必须保持 |
 | 预算、终止、基本错误反馈 | 纳入 | 基础执行约束 |
 | 局部内存状态、最小诊断 | 纳入 | 需要跨请求查询轨迹时再加运行记录 |
-| 两个无副作用本地演示工具 | 建议纳入 | 业务工具由实际场景确定 |
+| Skill 只读工具（list_skills / read_skill） | 纳入 | 业务与写操作工具由实际场景确定；写技能需另行设计授权与幂等 |
+| 模板 Skill 关联（TemplateSkill） | 纳入：作为只读工具的绑定与版本来源 | 更丰富的技能检索、提示词注入形态按需求单独设计 |
+| 模板压缩字段（contextBudgetTokens、summaryModelId、keepRecentMessages） | 首版不消费，仅存储 | 多轮会话与压缩需求落地后启用（D13） |
 | SSE、流中工具执行 | 暂缓 | 先有“用户需要逐步看到内容”的明确交互目标；SSE 和流中执行也可分开建设 |
 | 用户插话、follow-up 队列 | 暂缓 | 需要长任务中途调整指令时 |
 | 业务写工具、审批与沙箱 | 暂缓 | 确定写操作场景后，一并设计授权、幂等和执行不确定状态 |
@@ -325,24 +336,27 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 
 以下均为**拍板后开发的验收计划，当前没有实现或执行这些用例**：
 
-- [ ] 无工具正常文本结束；单工具一次；工具连续多轮；同轮多个独立工具按顺序执行。
+- [ ] 无工具正常文本结束；单工具一次；工具连续多轮（list_skills → read_skill 即为天然的两轮链路）；同轮多个独立工具按顺序执行。
 - [ ] 每次模型调用都带工具定义；完整 assistant 消息、metadata、call id 和工具结果配对保留。
 - [ ] 正常 stop 带完整工具调用可进入工具分支；length 带工具、未知 finish、空响应、空答案均不错误执行或成功返回。
 - [ ] 工具调用 id 为空/重复时，整个批次不开始；未知工具、非法 JSON、字段类型错误、业务参数越界能得到对应失败结果。
+- [ ] `list_skills` 只返回当前模板绑定的技能及绑定版本；`read_skill` 返回绑定版本文档内容；读未绑定 slug 回填参数错误；对象存储不可用时回填工具错误且不终止 run；超长文档截断为带 `truncated` 标识的合法 envelope。
 - [ ] 前面一个工具成功、后面一个校验失败时，历史准确反映各自结果；不可预期异常不会伪装为成功或自动重跑前面的工具。
 - [ ] maxIterations=1 时直接文本可以成功、工具请求不会执行；最后一轮工具请求硬停止；没有隐藏的第 N+1 次总结请求。
 - [ ] 超过整批工具预算时一个也不执行；失败调用也消耗工具调用额度；过大结果整理后仍是合法 JSON 且包含截断标识。
 - [ ] 延迟模型桩、延迟工具桩覆盖单工具超时、剩余运行预算、取消前/执行中/工具批次边界；终止后不再派发新工作。
 - [ ] 两个并发请求的历史、预算和取消状态互不影响；默认诊断和 HTTP 错误不泄露提示词、参数、凭证或异常原文。
+- [ ] 模板不存在或跨租户引用返回 404；引用的模型或来源被禁用、删除时运行明确失败（503），不静默回退其他模型；模板 `maxIterations` 为 0 或 `timeoutMinutes` 为 0 被拒绝。
+- [ ] 模板压缩字段（contextBudgetTokens、summaryModelId、keepRecentMessages）不参与首版运行。
 - [ ] HTTP 成功结构及各失败类型的状态码与最终拍板一致。
 
-测试分为假 ChatModel/假工具的确定性单元测试，以及本地 HTTP provider 桩的适配器测试。后者专门覆盖工具 schema 出站、tool_calls/finish reason 入站、消息回放和取消/超时行为。不请求真实模型，不用真实凭证。
+测试分为假 ChatModel/假工具的确定性单元测试（skill 工具用预置技能数据与对象存储桩，不依赖真实 RustFS），以及本地 HTTP provider 桩的适配器测试。后者专门覆盖工具 schema 出站、tool_calls/finish reason 入站、消息回放和取消/超时行为。不请求真实模型，不用真实凭证。
 
 按后续实际改动运行仓库检查和后端检查；数据库未在本提案范围内，不为此增加表或数据库集成测试。
 
-## 12. 待拍板清单
+## 12. 决策清单
 
-可以按编号确认或修改，不必一次讨论所有未来能力。
+以下决策已于 2026-10-25 对话拍板：D1–D11 按推荐答案确认；D12–D14 为同日对齐当前代码后新增并确认。D6、D12 于同日二次修订：首批工具改为 Skill 只读工具，移除 add/multiply 演示工具。
 
 | 编号 | 需要决定的事项 | 推荐答案 | 不选择推荐方案的主要代价 |
 | --- | --- | --- | --- |
@@ -351,18 +365,29 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 | D3 | 批量工具调度 | 支持多调用，全部串行 | 并发需额外定义工具安全性、数量上限、顺序和取消行为 |
 | D4 | 工具错误策略 | 名称/参数/可预期业务错误回填；异常、超时终止 | 全部 fail-fast 更简单但无法修正参数；全部继续会掩盖执行状态不明 |
 | D5 | 限次后的行为 | 12 次包含最终回答，最后一次仍调工具则硬停止且不执行 | 文本收尾模式需要单独保留或增加模型预算，并改变计数语义 |
-| D6 | 首批工具 | 两个无副作用本地工具 add/multiply，先验证流程 | 换业务工具需同时确定数据、授权和错误语义 |
+| D6 | 首批工具 | list_skills / read_skill 两个只读 Skill 工具（同日修订，移除 add/multiply） | 换业务或写操作工具需同时确定数据、授权和错误语义 |
 | D7 | 状态范围 | 一请求一 run，局部内存，不保存跨请求对话 | 多轮会话与恢复需要 session 身份、持久化和并发控制 |
 | D8 | 重试与恢复 | SDK 与运行时均不自动重试，不续写、不自动压缩 | 自动恢复需补充错误分类、状态记录和额外预算 |
 | D9 | 新增两个限制 | 工具总数 32、单结果 8000 字符作为起始值 | 也可调整数值，但不能只有模型轮次上限 |
 | D10 | 取消和高级扩展 | 内部取消测试；暂不做取消接口、Hooks、MCP、子 Agent | 若本阶段就需要这些能力，应先扩大需求和验收范围 |
 | D11 | HTTP 失败映射 | 502 模型/协议错误、422 预算耗尽、504 超时 | 可以统一其他映射，但前端必须能区分未完成与成功 |
+| D12 | Skill 在首版循环的角色 | 以只读工具消费：list_skills 查看模板绑定技能，read_skill(slug) 读绑定版本文档（同日修订，原为不消费） | 注入提示词不产生工具调用，验证不了工具链路；写技能语义需另行设计授权与幂等 |
+| D13 | 模板压缩字段的消费范围 | 首版仅读 modelId、systemPrompt、temperature、maxIterations、timeoutMinutes | 全部消费需先实现会话历史与压缩逻辑 |
+| D14 | 运行入口与模板的关系 | chat 请求携带 templateId，模型、提示词、预算均取自模板；链路校验失败明确失败 | 无模板入口与已落地的模板管理脱节，后续需迁移接口 |
 
 ## 13. 实施步骤与完成记录
 
-**实施步骤：尚未安排。** 用户确认目标、范围与关键决策后，再补充具体文件设计、分步开发顺序及验证命令，不以本文建议自动授权开发。
+**实施步骤（建议顺序；决策已拍板，开工仍需另行确认）：**
 
-本轮交付仅为源码调研和提案。未修改 Agent、工具、Controller、配置或测试实现；未运行五个参考项目或模型服务。已执行 `./scripts/check.sh repo`：仓库内容检查通过，16 项仓库脚本测试通过。该检查不等于 ReAct 流程已实现或通过测试，未来开发验收保持未勾选。
+1. 模型链路与 ChatModel 工厂：收尾 `backend/pom.xml` 未提交的 Spring AI 依赖；在 `llm` 边界实现按模板引用构建 `ChatModel` 的工厂与链路校验（模板→模型→来源、启停状态、凭证解密），以本地 HTTP 桩测试，不请求真实模型。
+2. 循环本体与 Skill 工具：新建 `agent` 包（Controller、`Agent`、全局工具预算配置）与 `tool` 包（`ToolExecutor` 及 list_skills / read_skill 只读工具，按模板绑定解析范围与版本），实现第 7 节状态机与第 9 节预算、错误策略；用假模型、预置技能数据与对象存储桩覆盖第 11 节用例。
+3. 验收收尾：按 D11/D14 核对 HTTP 行为，运行 `./scripts/check.sh backend`（涉及 Mapper 或集成设施时加 `integration`），对照第 11 节逐项勾选并更新本文状态。
+
+**完成记录：**
+
+- 2026-10-18 调研轮：源码调研与提案初稿。未修改实现；已执行 `./scripts/check.sh repo` 通过（16 项仓库脚本测试通过）。该检查不等于 ReAct 流程已实现或通过测试，开发验收保持未勾选。
+- 2026-10-25 对齐轮：按当前代码更新第 2 节起点与模型接入方式（按租户动态构建 ChatModel），确认 Skill 与模板字段消费范围，拍板 D1–D14。未修改后端实现与测试；已执行 `./scripts/check.sh repo` 通过（33 项仓库脚本测试通过），该检查不涉及业务构建或测试。
+- 2026-10-25 修订轮：D6/D12 调整——首批工具改为 list_skills / read_skill 只读 Skill 工具，read_skill 读模板绑定版本，移除 add/multiply；第 1、2、4、8、9、10、11、12、13 节同步更新。未修改后端实现与测试；已执行 `./scripts/check.sh repo` 通过（33 项仓库脚本测试通过），该检查不涉及业务构建或测试。
 
 ## 附录：源码定位
 

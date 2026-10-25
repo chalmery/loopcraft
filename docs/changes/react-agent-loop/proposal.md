@@ -335,22 +335,22 @@ chat 受理返回 `202 {runId}`；SSE 事件集为 run_started / iteration_start
 
 ## 11. 验收条件与未来验证方式
 
-以下均为**拍板后开发的验收计划，当前没有实现或执行这些用例**：
+验收用例随各实施轮逐步落地；除注明外均以假模型、对象存储桩或本地 HTTP 桩执行，不请求真实模型。
 
 - [x] 无工具正常文本结束；单工具一次；工具连续多轮；同轮多个独立工具按顺序执行。
 - [x] 每次模型调用都带工具定义；完整 assistant 消息、metadata、call id 和工具结果配对保留。
 - [x] 正常 stop 带完整工具调用可进入工具分支；length 带工具、未知 finish、空响应、空答案均不错误执行或成功返回。
-- [ ] 工具调用 id 为空/重复时，整个批次不开始；未知工具、非法 JSON、字段类型错误、业务参数越界能得到对应失败结果。（id 与未知工具已覆盖；Skill 工具参数解析类用例待补）
-- [ ] `list_skills` 只返回当前模板绑定的技能及绑定版本；`read_skill` 返回绑定版本文档内容；读未绑定 slug 回填参数错误；对象存储不可用时回填工具错误且不终止 run；超长文档截断为带 `truncated` 标识的合法 envelope。（实现已落，用例待补）
-- [ ] 前面一个工具成功、后面一个校验失败时，历史准确反映各自结果；不可预期异常不会伪装为成功或自动重跑前面的工具。（用例待补）
+- [x] 工具调用 id 为空/重复时，整个批次不开始；未知工具、非法 JSON、字段类型错误、业务参数越界能得到对应失败结果。（id 与未知工具由 AgentTests 覆盖；Skill 工具参数解析类用例由 SkillToolsTests 覆盖）
+- [x] `list_skills` 只返回当前模板绑定的技能及绑定版本；`read_skill` 返回绑定版本文档内容；读未绑定 slug 回填参数错误；对象存储不可用时回填工具错误且不终止 run；超长文档截断为带 `truncated` 标识的合法 envelope。（SkillToolsTests / ToolResultsTests 覆盖）
+- [x] 前面一个工具成功、后面一个校验失败时，历史准确反映各自结果；不可预期异常不会伪装为成功或自动重跑前面的工具。（AgentTests 混合批次用例覆盖）
 - [x] maxIterations=1 时直接文本可以成功、工具请求不会执行；最后一轮工具请求硬停止；没有隐藏的第 N+1 次总结请求。
-- [ ] 超过整批工具预算时一个也不执行；失败调用也消耗工具调用额度；过大结果整理后仍是合法 JSON 且包含截断标识。（预算两项已覆盖；截断 envelope 用例待补）
+- [x] 超过整批工具预算时一个也不执行；失败调用也消耗工具调用额度；过大结果整理后仍是合法 JSON 且包含截断标识。（预算两项此前已覆盖；截断 envelope 由 ToolResultsTests 覆盖）
 - [x] 延迟模型桩、延迟工具桩覆盖单工具超时、剩余运行预算、取消前/执行中/工具批次边界；终止后不再派发新工作。
-- [ ] 两个并发请求的历史、预算和取消状态互不影响；默认诊断和 HTTP 错误不泄露提示词、参数、凭证或异常原文。（并发隔离已覆盖；HTTP 泄露面待接口测试补充）
-- [ ] 模板不存在或跨租户引用返回 404；引用的模型或来源被禁用、删除时运行明确失败（503），不静默回退其他模型；模板 `maxIterations` 为 0 或 `timeoutMinutes` 为 0 被拒绝。（实现已落，接口级测试待补）
-- [ ] 模板压缩字段（contextBudgetTokens、summaryModelId、keepRecentMessages）不参与首版运行。（实现未读取，负向断言用例待补）
-- [ ] chat 受理返回 202 与 runId；SSE 按 7.1 事件集推送且不包含工具参数与结果内容；Last-Event-ID 重连从断点续传；连接断开任务继续执行至终态；热通道缺失时轮询数据库兜底；runId 跨租户或不存在 404；Redis 未启用受理 503。（实现已落，接口级测试待补）
-- [ ] HTTP 成功结构及各失败类型的状态码与最终拍板一致。（受理映射已实现，接口测试待补）
+- [x] 两个并发请求的历史、预算和取消状态互不影响；默认诊断和 HTTP 错误不泄露提示词、参数、凭证或异常原文。（并发隔离此前已覆盖；HTTP 泄露面由 AgentHttpTests 覆盖）
+- [x] 模板不存在或跨租户引用返回 404；引用的模型或来源被禁用、删除时运行明确失败（503），不静默回退其他模型；模板 `maxIterations` 为 0 或 `timeoutMinutes` 为 0 被拒绝。（AgentHttpTests 接口级覆盖；ChatModelFactoryTests 单元与 ChatModelFactoryIT 一次性 PG 集成覆盖链路失效与凭证解密，跨租户悬挂引用由模板→模型复合外键在数据库层排除）
+- [x] 模板压缩字段（contextBudgetTokens、summaryModelId、keepRecentMessages）不参与首版运行。（AgentHttpTests 受理断言预算仅来自迭代/超时与全局配置字段）
+- [x] chat 受理返回 202 与 runId；SSE 按 7.1 事件集推送且不包含工具参数与结果内容；Last-Event-ID 重连从断点续传；连接断开任务继续执行至终态；热通道缺失时轮询数据库兜底；runId 跨租户或不存在 404；Redis 未启用受理 503。（AgentHttpTests 覆盖，数据库与 Redis 以 Mockito 替身隔离）
+- [ ] HTTP 成功结构及各失败类型的状态码与最终拍板一致。（202/404/503/401/403 已由 AgentHttpTests 覆盖；同步形态 D11 的 422/502/504 已随 D15 异步化失效，终态失败类型需随会话通道重新对齐）
 
 测试分为假 ChatModel/假工具的确定性单元测试（skill 工具用预置技能数据与对象存储桩，不依赖真实 RustFS），以及本地 HTTP provider 桩的适配器测试。后者专门覆盖工具 schema 出站、tool_calls/finish reason 入站、消息回放和取消/超时行为。不请求真实模型，不用真实凭证。
 
@@ -395,6 +395,7 @@ chat 受理返回 `202 {runId}`；SSE 事件集为 run_started / iteration_start
 - 2026-10-25 修订轮：D6/D12 调整——首批工具改为 list_skills / read_skill 只读 Skill 工具，read_skill 读模板绑定版本，移除 add/multiply；第 1、2、4、8、9、10、11、12、13 节同步更新。未修改后端实现与测试；已执行 `./scripts/check.sh repo` 通过（33 项仓库脚本测试通过），该检查不涉及业务构建或测试。
 - 2026-10-25 实施轮三（外围通道，待提交）：chat 切换为受理接口（202 + runId）与 SSE 订阅端点；新增 lc_agent_run / lc_agent_run_event（受理落 RUNNING、终态更新、事件追加）；RunEvents 双层通道先落库再 XADD（MAXLEN+终态 TTL），Redis 失败不影响事件完整性；订阅端先按 Last-Event-ID 重放数据库再接 XREAD 实时，热通道缺失按序号轮询数据库兜底；Redis 未启用时受理 503。Agent 核心循环未改动（RunListener 适配发布）。`./scripts/check.sh backend` 通过（81 项）；受理/SSE/通道的接口级与集成测试待补，真实 Redis + 模型联调未做。
 - 2026-10-25 实施轮一（核心循环，已提交 9cec2d4）：实现 `agent` 包（AgentController 同步接口、AgentChatService 链路编排、Agent 显式循环、AgentErrors 映射、AgentProperties 预算配置）、`tool/ToolExecutor`、`llm/ChatModelFactory`（OPENAI_COMPATIBLE 构建，ANTHROPIC_COMPATIBLE 明确 503 待接入）；SkillTools 结果上限接入全局配置；chat 接口按租户路径与全员权限实现。假 ChatModel 确定性测试 24 项覆盖第 11 节循环类用例；`./scripts/check.sh backend` 通过（76 项）。HTTP 链路校验、Skill 工具行为、结果截断与适配器桩测试待补；Anthropic 协议运行时与真实模型联调未做。
+- 2026-10-25 测试补账轮（待提交）：补齐四项测试欠账——AgentHttpTests（受理 202、链路失败映射、SSE 重放/热通道/轮询兜底、跨租户 404、Redis 未启用 503、事件与错误体不泄露内容，MockMvc + Mockito 替身）、SkillToolsTests / ToolResultsTests（绑定快照、参数校验回填、存储不可用降级、截断 envelope 契约）、ChatModelFactoryTests（单元链路失效与凭证）+ ChatModelFactoryIT（一次性 PG 真链路与真实密文解密）、ChatModelAdapterTests（本地 HTTP 桩：stop/tool_calls/length/空文本入站映射、工具 schema 出站、消息回放、预算超时与取消），AgentTests 增补混合批次与 TOOL_CALLS 常量用例。过程中修复两处生产缺陷：ChatModelFactory 未提供 async client 导致 Spring AI 2.0 重建时凭证缺失（prepare 必抛），现同步/异步 client 均显式构建；Spring AI 2.0.1 适配器输出的 finish reason 为 TOOL_CALLS，循环此前只认 TOOL_EXECUTION，已将 TOOL_CALLS 纳入正常结束与空调用协议异常分支。`./scripts/check.sh backend` 通过（131 项，含并行进行的 MCP 会话 8 项）；`./scripts/check.sh integration` 中本次新增 IT 全部通过，唯一失败为并行 MCP 会话的 McpServerIT（403，与本次改动无关）。真实模型端到端联调仍未做。
 
 ## 附录：源码定位
 

@@ -79,10 +79,10 @@ body { margin: 0; padding: 24px; background: var(--background); color: var(--for
     <div class="group" data-zone="test">
       <h4>测试欠账 <span class="viz-badge b-debt">建议最先做</span></h4>
       <div class="items">
-        <div class="item" data-zone="test"><div class="head"><span class="name">HTTP / SSE 接口级测试</span><span class="viz-badge b-debt">欠账</span></div><span class="text-small text-muted">受理 202、Last-Event-ID 重放续传、热通道缺失轮询兜底、跨租户 404。提案 11 节未勾项。</span></div>
-        <div class="item" data-zone="tools"><div class="head"><span class="name">Skill 工具行为测试</span><span class="viz-badge b-debt">欠账</span></div><span class="text-small text-muted">绑定版本读取、未绑定 slug 回填、存储不可用不终止、超长截断 envelope。</span></div>
-        <div class="item" data-zone="model"><div class="head"><span class="name">ChatModelFactory 链路测试</span><span class="viz-badge b-debt">欠账</span></div><span class="text-small text-muted">模型/来源禁用与删除 503、凭证解密、不静默回退；需一次性 PG 的集成设施。</span></div>
-        <div class="item" data-zone="model"><div class="head"><span class="name">适配器离线桩测试</span><span class="viz-badge b-debt">欠账</span></div><span class="text-small text-muted">finish reason 映射、工具 schema 出站、消息回放、取消/超时行为（本地 HTTP 桩，不请求真实模型）。</span></div>
+        <div class="item" data-zone="test"><div class="head"><span class="name">HTTP / SSE 接口级测试</span><span class="viz-badge b-ready">已补（2026-10-25）</span></div><span class="text-small text-muted">受理 202、Last-Event-ID 重放续传、热通道缺失轮询兜底、跨租户 404、Redis 未启用 503，见 AgentHttpTests。</span></div>
+        <div class="item" data-zone="tools"><div class="head"><span class="name">Skill 工具行为测试</span><span class="viz-badge b-ready">已补（2026-10-25）</span></div><span class="text-small text-muted">绑定版本读取、未绑定 slug 回填、存储不可用不终止、超长截断 envelope，见 SkillToolsTests / ToolResultsTests。</span></div>
+        <div class="item" data-zone="model"><div class="head"><span class="name">ChatModelFactory 链路测试</span><span class="viz-badge b-ready">已补（2026-10-25）</span></div><span class="text-small text-muted">模型/来源禁用 503、凭证解密、不静默回退（单元 + 一次性 PG 集成 ChatModelFactoryIT；悬挂引用由复合外键排除）。</span></div>
+        <div class="item" data-zone="model"><div class="head"><span class="name">适配器离线桩测试</span><span class="viz-badge b-ready">已补（2026-10-25）</span></div><span class="text-small text-muted">本地 HTTP 桩覆盖 finish reason 映射、工具 schema 出站、消息回放、取消/超时（ChatModelAdapterTests）；过程中修复 async client 凭证缺失与 TOOL_CALLS 常量错位。</span></div>
         <div class="item" data-zone="channel"><div class="head"><span class="name">真实模型端到端联调</span><span class="viz-badge b-debt">欠账</span></div><span class="text-small text-muted">baseUrl 兼容性与 finish reason 实际映射是仅剩未验证项；dev 环境已就绪。</span></div>
       </div>
     </div>

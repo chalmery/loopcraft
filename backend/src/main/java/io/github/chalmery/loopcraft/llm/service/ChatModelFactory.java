@@ -10,7 +10,9 @@ import io.github.chalmery.loopcraft.llm.model.LlmSource;
 import io.github.chalmery.loopcraft.template.model.AgentTemplate;
 
 import com.openai.client.OpenAIClient;
+import com.openai.client.OpenAIClientAsync;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.client.okhttp.OpenAIOkHttpClientAsync;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -81,13 +83,25 @@ public class ChatModelFactory {
             LlmSource source, LlmModel model, AgentTemplate template, Map<String, ToolCallback> tools) {
         String apiKey = cipher.decrypt(source.getTenantId(), source.getApiKeyCiphertext());
         if ("OPENAI_COMPATIBLE".equals(source.getProtocol())) {
+            // Spring AI 2.0 在未显式提供 async client 时会按选项重建并因缺少凭证失败，
+            // 因此同步与异步 client 都在此显式构建，凭证只保留在 client 实例内。
             OpenAIClient client =
                     OpenAIOkHttpClient.builder()
                             .baseUrl(source.getBaseUrl())
                             .apiKey(apiKey)
                             .timeout(properties.modelRequestTimeout())
                             .build();
-            OpenAiChatModel chatModel = OpenAiChatModel.builder().openAiClient(client).build();
+            OpenAIClientAsync asyncClient =
+                    OpenAIOkHttpClientAsync.builder()
+                            .baseUrl(source.getBaseUrl())
+                            .apiKey(apiKey)
+                            .timeout(properties.modelRequestTimeout())
+                            .build();
+            OpenAiChatModel chatModel =
+                    OpenAiChatModel.builder()
+                            .openAiClient(client)
+                            .openAiClientAsync(asyncClient)
+                            .build();
             return new Prepared(chatModel, options(model, template, tools));
         }
         // Anthropic 兼容协议的运行时构建暂未接入，明确失败优于半可用；接入时补充离线桩验证。

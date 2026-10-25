@@ -462,6 +462,65 @@ class AgentTests {
                 .containsExactly("iteration:1", "tool:c1", "finished:c1:true:true", "iteration:2");
     }
 
+    @Test
+    void mixedBatchKeepsSuccessAndValidationErrorSeparately() {
+        FakeTool echo = FakeTool.of("echo", arguments -> "{\"ok\":true,\"data\":\"成功\"}");
+        FakeTool picker =
+                FakeTool.of(
+                        "pick",
+                        arguments -> "{\"ok\":false,\"error\":{\"code\":\"INVALID_ARGUMENT\",\"message\":\"slug 非法\"}}");
+        ScriptedChatModel model =
+                ScriptedChatModel.of(
+                        toolTurn("TOOL_EXECUTION",
+                                call("c1", "echo", "{\"text\":\"hi\"}"),
+                                call("c2", "pick", "{\"slug\":123}")),
+                        text("结合两次结果回答"));
+        RecordingListener listener = new RecordingListener();
+
+        RunOutcome outcome = agent.run(request(model, tools(echo, picker), budget(12)), listener);
+
+        assertThat(outcome.completed()).isTrue();
+        assertThat(outcome.toolCalls()).isEqualTo(2);
+        assertThat(echo.inputs).containsExactly("{\"text\":\"hi\"}");
+        ToolResponseMessage responses =
+                (ToolResponseMessage) model.prompts.get(1).getInstructions().get(3);
+        assertThat(responses.getResponses()).hasSize(2);
+        assertThat(responses.getResponses().get(0).responseData()).contains("\"ok\":true");
+        assertThat(responses.getResponses().get(1).responseData()).contains("INVALID_ARGUMENT");
+        assertThat(listener.events)
+                .containsSubsequence("finished:c1:true:false", "finished:c2:false:false");
+    }
+
+    @Test
+    void toolCallsFinishReasonFromSpringAiAdapterEntersToolBranch() {
+        // Spring AI 2.0.1 的 OpenAI 适配器把 finish_reason=tool_calls 输出为 TOOL_CALLS。
+        FakeTool echo = FakeTool.of("echo", arguments -> "{\"ok\":true}");
+        ScriptedChatModel model =
+                ScriptedChatModel.of(
+                        toolTurn("TOOL_CALLS", call("c1", "echo", "{}")),
+                        text("完成"));
+
+        RunOutcome outcome = agent.run(request(model, tools(echo), budget(12)), RunListener.none());
+
+        assertThat(outcome.completed()).isTrue();
+        assertThat(outcome.toolCalls()).isEqualTo(1);
+    }
+
+    @Test
+    void toolCallsFinishWithoutAnyCallFailsAsProtocolError() {
+        AssistantMessage assistant = AssistantMessage.builder().content("只有文本").build();
+        ChatResponse response =
+                new ChatResponse(List.of(new Generation(assistant, metadata("TOOL_CALLS"))));
+        ScriptedChatModel model = ScriptedChatModel.of(response);
+        FakeTool echo = FakeTool.of("echo", arguments -> "{\"ok\":true}");
+
+        RunOutcome outcome = agent.run(request(model, tools(echo), budget(12)), RunListener.none());
+
+        assertThat(outcome.status()).isEqualTo(RunStatus.FAILED);
+        assertThat(outcome.failure()).isEqualTo(RunFailure.INVALID_MODEL_RESPONSE);
+        assertThat(echo.inputs).isEmpty();
+    }
+
     private AgentRequest request(ChatModel model, Map<String, ToolCallback> tools, RunBudget budget) {
         return new AgentRequest(
                 "请处理",

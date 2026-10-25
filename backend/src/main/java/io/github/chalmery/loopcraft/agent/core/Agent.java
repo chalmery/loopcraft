@@ -158,7 +158,7 @@ public class Agent {
         if (hasCalls) {
             return Decision.tools(output, output.getToolCalls());
         }
-        if ("TOOL_EXECUTION".equalsIgnoreCase(finish)) {
+        if ("TOOL_EXECUTION".equalsIgnoreCase(finish) || "TOOL_CALLS".equalsIgnoreCase(finish)) {
             // 声称工具调用结束却没有任何调用，视为协议异常，不猜测修复。
             return Decision.failed(RunFailure.INVALID_MODEL_RESPONSE);
         }
@@ -176,12 +176,13 @@ public class Agent {
         return response.getResult().getMetadata().getFinishReason();
     }
 
-    /** 适配器正常结束类型：stop、空，以及由工具块驱动的 tool execution。 */
+    /** 适配器正常结束类型：stop、空，以及工具块驱动的 tool execution / tool calls。 */
     private boolean finishNormal(String finish) {
         return finish == null
                 || "STOP".equalsIgnoreCase(finish)
                 || "NULL".equalsIgnoreCase(finish)
-                || "TOOL_EXECUTION".equalsIgnoreCase(finish);
+                || "TOOL_EXECUTION".equalsIgnoreCase(finish)
+                || "TOOL_CALLS".equalsIgnoreCase(finish);
     }
 
     /** 批内串行执行；每个工具调用前检查剩余时间，超时后停止派发，已完成的保留。 */

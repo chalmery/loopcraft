@@ -2,6 +2,7 @@ package io.github.chalmery.loopcraft.tool;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 
+import io.github.chalmery.loopcraft.agent.config.AgentProperties;
 import io.github.chalmery.loopcraft.skill.mapper.SkillMapper;
 import io.github.chalmery.loopcraft.skill.mapper.SkillVersionMapper;
 import io.github.chalmery.loopcraft.skill.model.Skill;
@@ -27,9 +28,6 @@ import java.util.Set;
 @Component
 public class SkillTools {
 
-    /** 单个工具结果的字符上限（提案 D9 起始值）；接入运行配置后改为显式传入。 */
-    private static final int MAX_RESULT_CHARS = 8000;
-
     private final ObjectProvider<TemplateSkillMapper> templateSkillMappers;
 
     private final ObjectProvider<SkillMapper> skillMappers;
@@ -40,25 +38,30 @@ public class SkillTools {
 
     private final ObjectMapper json;
 
+    private final AgentProperties properties;
+
     public SkillTools(
             ObjectProvider<TemplateSkillMapper> templateSkillMappers,
             ObjectProvider<SkillMapper> skillMappers,
             ObjectProvider<SkillVersionMapper> versionMappers,
             ObjectProvider<FileStorage> fileStorages,
-            ObjectMapper json) {
+            ObjectMapper json,
+            AgentProperties properties) {
         this.templateSkillMappers = templateSkillMappers;
         this.skillMappers = skillMappers;
         this.versionMappers = versionMappers;
         this.fileStorages = fileStorages;
         this.json = json;
+        this.properties = properties;
     }
 
     /** 解析模板绑定并构建本次运行固定的工具表；提供给模型的定义与可执行范围来自同一份快照。 */
     public Map<String, ToolCallback> forTemplate(long tenantId, long templateId) {
         List<Binding> bindings = bindings(tenantId, templateId);
+        int maxResultChars = properties.maxToolResultChars();
         Map<String, ToolCallback> tools = new LinkedHashMap<>();
-        tools.put("list_skills", new ListSkillsTool(json, bindings, MAX_RESULT_CHARS));
-        tools.put("read_skill", new ReadSkillTool(json, bindings, fileStorages, MAX_RESULT_CHARS));
+        tools.put("list_skills", new ListSkillsTool(json, bindings, maxResultChars));
+        tools.put("read_skill", new ReadSkillTool(json, bindings, fileStorages, maxResultChars));
         return Collections.unmodifiableMap(tools);
     }
 

@@ -17,6 +17,11 @@ spring:
     keep-alive: true
 
 loopcraft:
+  agent:
+    model-request-timeout: ${AGENT_MODEL_REQUEST_TIMEOUT:45s}
+    tool-timeout: ${AGENT_TOOL_TIMEOUT:15s}
+    max-tool-calls: ${AGENT_MAX_TOOL_CALLS:32}
+    max-tool-result-chars: ${AGENT_MAX_TOOL_RESULT_CHARS:8000}
   skill:
     bucket: ${SKILL_BUCKET:loopcraft-skills}
   storage:

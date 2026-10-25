@@ -18,8 +18,13 @@ class ListSkillsTool implements ToolCallback {
     /** 单条描述的展示长度上限，控制多技能时整体结果体积。 */
     private static final int DESCRIPTION_LIMIT = 200;
 
-    private static final String INPUT_SCHEMA =
-            "{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}";
+    private static final String INPUT_SCHEMA = """
+            {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+            """;
 
     private final ObjectMapper json;
 

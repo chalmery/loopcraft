@@ -24,10 +24,19 @@ class ReadSkillTool implements ToolCallback {
     /** 与 lc_skill.slug 的长度约束对齐，拒绝超长输入。 */
     private static final int SLUG_LIMIT = 64;
 
-    private static final String INPUT_SCHEMA =
-            "{\"type\":\"object\",\"properties\":{\"slug\":{\"type\":\"string\","
-                    + "\"description\":\"技能 slug，来自 list_skills 的返回结果\"}},"
-                    + "\"required\":[\"slug\"],\"additionalProperties\":false}";
+    private static final String INPUT_SCHEMA = """
+            {
+              "type": "object",
+              "properties": {
+                "slug": {
+                  "type": "string",
+                  "description": "技能 slug，来自 list_skills 的返回结果"
+                }
+              },
+              "required": ["slug"],
+              "additionalProperties": false
+            }
+            """;
 
     private final ObjectMapper json;
 

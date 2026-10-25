@@ -22,6 +22,8 @@ loopcraft:
     tool-timeout: ${AGENT_TOOL_TIMEOUT:15s}
     max-tool-calls: ${AGENT_MAX_TOOL_CALLS:32}
     max-tool-result-chars: ${AGENT_MAX_TOOL_RESULT_CHARS:8000}
+    events-stream-max-len: ${AGENT_EVENTS_STREAM_MAX_LEN:1000}
+    events-stream-ttl: ${AGENT_EVENTS_STREAM_TTL:10m}
   skill:
     bucket: ${SKILL_BUCKET:loopcraft-skills}
   storage:

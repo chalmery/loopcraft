@@ -65,6 +65,17 @@ erDiagram
         varchar bucket "独立上传跟踪，无外键"
         varchar object_key "bucket+key 唯一"
     }
+    lc_mcp_server {
+        bigint id PK
+        bigint tenant_id PK, FK
+        varchar slug "工具名前缀标识，租户内唯一"
+        varchar transport "HTTP_STREAMABLE | HTTP_SSE | STDIO"
+        varchar url "远程服务地址，HTTP 两类必填"
+        text auth_headers "鉴权头 JSON，值为密文不回显"
+        varchar command "stdio 命令"
+        integer tool_timeout_ms "空值用全局 toolTimeout"
+        boolean enabled
+    }
     lc_agent_template {
         bigint id PK
         bigint tenant_id PK, FK
@@ -114,6 +125,7 @@ erDiagram
     lc_tenant ||--o{ lc_skill : "技能"
     lc_skill ||--o{ lc_skill_version : "整包版本"
     lc_skill ||--o{ lc_skill_tag : "标签"
+    lc_tenant ||--o{ lc_mcp_server : "MCP 服务"
     lc_tenant ||--o{ lc_agent_template : "模板"
     lc_llm_model ||--o{ lc_agent_template : "运行模型 / 摘要模型"
     lc_agent_template ||--o{ lc_template_skill : "绑定技能 CASCADE"
@@ -137,6 +149,7 @@ erDiagram
 | skill | lc_skill_version | 技能整包版本，指向对象存储 | `backend/sql/skill/create_skill_version.sql` |
 | skill | lc_skill_tag | 技能标签 | `backend/sql/skill/create_skill_tag.sql` |
 | skill | lc_skill_object_upload | 上传对象跟踪（清理补偿用，无外键） | `backend/sql/skill/create_skill_object_upload.sql` |
+| mcp | lc_mcp_server | 租户 MCP 服务配置（传输、地址/命令、加密鉴权头、超时覆盖） | `backend/sql/mcp/create_mcp_server.sql` |
 | template | lc_agent_template | Agent 运行模板（模型、提示词、预算） | `backend/sql/template/create_agent_template.sql` |
 | template | lc_template_skill | 模板与技能版本的绑定 | `backend/sql/template/create_template_skill.sql` |
 | template | lc_template_request | 模板保存幂等请求记录 | `backend/sql/template/create_template_request.sql` |
@@ -145,6 +158,6 @@ erDiagram
 
 ## 初始化顺序
 
-按外键依赖：identity（lc_user → lc_tenant → lc_tenant_member）→ llm（lc_llm_source → lc_llm_model）→ skill（lc_skill → lc_skill_version / lc_skill_tag / lc_skill_object_upload）→ template（lc_agent_template → lc_template_skill / lc_template_request）→ agent（lc_agent_run → lc_agent_run_event）。各模块内顺序见 `backend/sql/<模块>/README.md`。
+按外键依赖：identity（lc_user → lc_tenant → lc_tenant_member）→ llm（lc_llm_source → lc_llm_model）→ skill（lc_skill → lc_skill_version / lc_skill_tag / lc_skill_object_upload）→ mcp（lc_mcp_server）→ template（lc_agent_template → lc_template_skill / lc_template_request）→ agent（lc_agent_run → lc_agent_run_event）。各模块内顺序见 `backend/sql/<模块>/README.md`。
 
 Agent 运行事件同时写入 lc_agent_run_event（真相源）与 Redis Stream（实时通道，终态后短时保留）；SSE 重放优先读 Stream，缺失或过期时以本表兜底。

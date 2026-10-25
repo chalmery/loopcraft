@@ -8,6 +8,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PanelsTopLeft,
+  Plug,
   Puzzle,
   Users,
 } from 'lucide-react'
@@ -39,16 +40,19 @@ import { profileApi } from '@/features/profile/api'
 import { TenantSelection } from '@/features/workspace/TenantSelection'
 import { SkillManagement } from '@/features/skills/SkillManagement'
 import { LlmAccess } from '@/features/llm-access/LlmAccess'
+import { McpServers } from '@/features/mcp-services/McpServers'
 import { TemplateManagement } from '@/features/agent-templates/TemplateManagement'
 import { WorkspaceSection } from '@/features/workspace/WorkspaceSection'
 import { workspaceApi } from '@/features/workspace/api'
 import { useWorkspaceData } from '@/features/workspace/useWorkspaceData'
 
-type Section = 'templates' | 'skills' | 'llm' | 'workspace' | 'profile' | 'tenants' | 'users'
+type Section =
+  'templates' | 'skills' | 'mcp' | 'llm' | 'workspace' | 'profile' | 'tenants' | 'users'
 const titles: Record<Section, string> = {
   templates: '模板配置',
   llm: '模型接入',
   skills: 'Skill 管理',
+  mcp: 'MCP 服务',
   workspace: '租户设置',
   profile: '个人设置',
   tenants: '租户管理',
@@ -134,7 +138,12 @@ function AuthenticatedPortal({
     },
     {
       label: '插件',
-      items: tenant ? [{ id: 'skills' as const, label: titles.skills, icon: Puzzle }] : [],
+      items: tenant
+        ? [
+            { id: 'skills' as const, label: titles.skills, icon: Puzzle },
+            { id: 'mcp' as const, label: titles.mcp, icon: Plug },
+          ]
+        : [],
     },
     { label: '租户配置', items: tenantLinks },
     {
@@ -408,6 +417,13 @@ function AuthenticatedPortal({
               canManageBuiltIn={isOwner || user.platformAdmin}
               onDirtyChange={setSkillDirty}
               onPendingChange={setSkillPending}
+            />
+          )}
+          {visibleSection === 'mcp' && tenantId !== null && (
+            <McpServers
+              key={tenantId}
+              tenantId={tenantId}
+              canManage={isOwner || user.platformAdmin}
             />
           )}
           {visibleSection === 'templates' && tenantId !== null && (

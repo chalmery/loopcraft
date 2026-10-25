@@ -26,6 +26,9 @@ loopcraft:
     events-stream-ttl: ${AGENT_EVENTS_STREAM_TTL:10m}
   skill:
     bucket: ${SKILL_BUCKET:loopcraft-skills}
+  mcp:
+    # stdio 允许后端执行租户配置的本地命令，默认关闭；仅开发环境显式打开。
+    stdio-enabled: ${MCP_STDIO_ENABLED:false}
   storage:
     enabled: ${STORAGE_ENABLED:false}
     endpoint: ${STORAGE_ENDPOINT:http://127.0.0.1:9000}

@@ -1,0 +1,4 @@
+[test]
+# Radix 组件的 SSR 守卫在模块导入期读取 globalThis.document；预置空文档，
+# 避免 Portal/Dialog 在测试进程中被判定为 SSR 环境而静默不渲染。
+preload = ["./tests/support/preload.ts"]

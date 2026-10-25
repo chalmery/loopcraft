@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LoopCraft · MCP 客户端接入 · r2</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <aside class="workspace-nav">
+      <a class="brand" href="index.html"><b>L</b> LoopCraft</a>
+      <div class="workspace-label">
+        <span class="workspace-avatar">A</span>
+        <div>演示工作区<small>团队空间</small></div>
+      </div>
+      <small>插件</small>
+      <p class="active nav-item" data-view="servers">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" /><path d="M17.5 14v7M14 17.5h7" />
+        </svg>
+        MCP 服务
+      </p>
+      <p class="muted">Skill 管理</p>
+      <small>Agent</small>
+      <p class="nav-item" data-view="templates">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="3" /><path d="M8 9h8M8 13h8M8 17h5" />
+        </svg>
+        模板与绑定
+      </p>
+      <p class="nav-item" data-view="chat">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12a8 8 0 0 1-8 8H4l2.5-3A8 8 0 1 1 21 12Z" />
+        </svg>
+        发起对话
+      </p>
+      <small>后台配置</small>
+      <p class="muted">模型接入</p>
+      <p class="muted">工作区与成员</p>
+      <footer><span class="footer-dot"></span> 设计预览 · r2</footer>
+    </aside>
+    <main>
+      <header>
+        <span id="breadcrumb">工作区 / MCP 服务</span>
+        <label>
+          <span class="workspace-caption">工作区</span>
+          <select id="tenant">
+            <option value="a">演示工作区 A</option>
+            <option value="b">演示工作区 B</option>
+          </select>
+        </label>
+      </header>
+      <div class="page">
+        <div class="prototype-bar">
+          <span>交互原型 <span class="muted">/ r2 · 示例数据</span></span>
+          <details class="preview-settings">
+            <summary>预览设置</summary>
+            <div class="review">
+              <label>
+                角色
+                <select id="role">
+                  <option value="edit">普通成员</option>
+                  <option value="owner">租户负责人</option>
+                  <option value="read">只读预览</option>
+                </select>
+              </label>
+              <label>
+                列表状态
+                <select id="scenario">
+                  <option value="normal">正常数据</option>
+                  <option value="empty">空工作区</option>
+                  <option value="loading">加载中</option>
+                  <option value="error">加载失败</option>
+                </select>
+              </label>
+              <label><input id="stdio" type="checkbox" />启用 stdio 总开关（loopcraft.mcp.stdio.enabled）</label>
+              <span>全部操作仅保存在内存中，刷新后重置。</span>
+            </div>
+          </details>
+        </div>
+
+        <section class="view" id="view-servers" hidden>
+          <div class="heading">
+            <div>
+              <h1>MCP 服务 <span class="title-count" id="server-count">0</span></h1>
+              <p class="muted">租户级 MCP Server 清单；Agent 模板从这里绑定服务获得工具。</p>
+            </div>
+            <div class="actions">
+              <button class="guard" data-new="1">新建服务</button>
+            </div>
+          </div>
+          <div id="server-list"></div>
+        </section>
+
+        <section class="view" id="view-templates" hidden>
+          <div class="heading">
+            <div>
+              <h1>模板与绑定</h1>
+              <p class="muted">在模板上绑定 Skill 与 MCP 服务；发起对话时按模板解析工具白名单。</p>
+            </div>
+            <div class="actions"><button class="secondary guard" id="back-templates" hidden>返回列表</button></div>
+          </div>
+          <div id="template-body"></div>
+        </section>
+
+        <section class="view" id="view-chat" hidden>
+          <div class="heading">
+            <div>
+              <h1>发起对话</h1>
+              <p class="muted">受理与事件形态的模拟面板：绑定服务不可用时拒绝受理，可用时进入 ReAct 循环。</p>
+            </div>
+          </div>
+          <div class="chat-layout">
+            <div class="panel">
+              <label>
+                Agent 模板
+                <select id="chat-template"></select>
+              </label>
+              <label>
+                消息
+                <textarea id="chat-message" rows="3">帮我查一下 React Server Components 的最新文档要点</textarea>
+              </label>
+              <div class="dialog-actions">
+                <span class="hint">模拟面板：不请求真实模型，仅演示受理判定与事件流。</span>
+                <button id="chat-send">发送</button>
+              </div>
+            </div>
+            <div id="chat-result"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <dialog id="server-dialog">
+      <form method="dialog" id="server-form">
+        <div class="section-heading">
+          <h2 id="server-dialog-title">新建服务</h2>
+          <span class="badge" id="server-dialog-state"></span>
+        </div>
+        <div class="form-grid">
+          <label>
+            名称
+            <input id="f-name" placeholder="例：Context7 文档检索" />
+          </label>
+          <label>
+            标识 slug（工具名前缀使用）
+            <input id="f-slug" placeholder="例：context7" class="mono" />
+          </label>
+          <label class="full">
+            传输类型
+            <select id="f-transport">
+              <option value="http-streamable">Streamable HTTP（新协议）</option>
+              <option value="http-sse">HTTP+SSE（老协议）</option>
+              <option value="stdio">stdio 本地进程</option>
+            </select>
+            <small class="hint" id="stdio-hint" hidden>stdio 总开关未启用（loopcraft.mcp.stdio.enabled=false）。</small>
+          </label>
+        </div>
+        <div class="form-grid" id="http-fields">
+          <label class="full">
+            服务地址
+            <input id="f-url" placeholder="https://mcp.example.com/mcp" class="mono" />
+            <small class="hint">Streamable HTTP 通常以 /mcp 结尾；HTTP+SSE 老协议通常以 /sse 结尾。</small>
+          </label>
+          <div class="full tag-field">
+            <span class="field-label">鉴权头（静态 token，值保存后不再回显）</span>
+            <div id="auth-rows"></div>
+            <button class="secondary" id="add-auth" type="button">添加鉴权头</button>
+          </div>
+        </div>
+        <div class="form-grid" id="stdio-fields" hidden>
+          <label class="full">
+            命令
+            <input id="f-command" placeholder="npx" class="mono" />
+          </label>
+          <label>
+            参数（每行一个）
+            <textarea id="f-args" rows="3" class="mono" placeholder="@modelcontextprotocol/server-filesystem&#10;/data"></textarea>
+          </label>
+          <label>
+            环境变量（每行 KEY=VALUE）
+            <textarea id="f-env" rows="3" class="mono" placeholder="LC_ROOT=/data"></textarea>
+          </label>
+        </div>
+        <p class="error" id="form-error"></p>
+        <div id="test-result" hidden></div>
+        <div class="dialog-actions">
+          <button class="secondary" id="test-conn" type="button">测试连接</button>
+          <button class="secondary" value="cancel" formnovalidate>取消</button>
+          <button value="save">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="tools-dialog">
+      <div class="section-heading">
+        <h2 id="tools-dialog-title">工具清单</h2>
+        <span class="badge" id="tools-dialog-meta"></span>
+      </div>
+      <p class="hint">工具以 <span class="mono">mcp__&lt;slug&gt;__&lt;工具名&gt;</span> 进入模型白名单。</p>
+      <div id="tools-list"></div>
+      <div class="dialog-actions"><button class="secondary" id="tools-close">关闭</button></div>
+    </dialog>
+
+    <dialog id="confirm-dialog">
+      <h2 id="confirm-title">确认操作</h2>
+      <p id="confirm-text" class="hint"></p>
+      <div class="dialog-actions">
+        <button class="secondary" id="confirm-no">取消</button>
+        <button class="danger" id="confirm-yes">确认</button>
+      </div>
+    </dialog>
+
+    <div id="toast" role="status" hidden></div>
+  </body>
+</html>

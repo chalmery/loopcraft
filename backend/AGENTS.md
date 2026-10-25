@@ -6,6 +6,7 @@
 - Spring Boot 4.1.1
 - Spring MVC；`application.yml` 已启用虚拟线程
 - PostgreSQL、MyBatis-Plus（Boot 4 starter）；SQL 在 `sql/` 按业务模块手动维护，不引入 Flyway
+- Redis：`spring-data-redis` + Lettuce 直连，按 `loopcraft.redis.enabled` 显式启用；不用 Boot starter，避免未启用时仍被自动配置创建连接工厂
 - 基础包路径：`io.github.chalmery.loopcraft`
 
 修改版本或配置前，先检查 `pom.xml` 和 `src/main/resources/application.yml` 中的实际内容。

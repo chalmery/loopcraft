@@ -39,7 +39,8 @@ class EnvironmentTests(unittest.TestCase):
                                     "SESSION_COOKIE_SECURE": "true", "STORAGE_ENABLED": "true",
                                     "STORAGE_SECRET_KEY": "external-secret", "RUSTFS_SECRET_KEY": "external-secret",
                                     "AWS_ACCESS_KEY_ID": "external-key", "AWS_SECRET_ACCESS_KEY": "external-secret",
-                                    "AWS_ENDPOINT_URL": "https://external.example", "SKILL_BUCKET": "external-bucket"}, clear=True):
+                                    "AWS_ENDPOINT_URL": "https://external.example", "SKILL_BUCKET": "external-bucket",
+                                    "REDIS_ENABLED": "true", "REDIS_PASSWORD": "external-secret"}, clear=True):
             self.assertEqual(dev.test_environment(), {"PATH": "/bin"})
 
     def test_launcher_only_reads_dev_configuration(self):
@@ -56,6 +57,25 @@ class EnvironmentTests(unittest.TestCase):
             self.assertEqual(env["DB_URL"], "jdbc:postgresql://127.0.0.1:15439/loopcraft_local")
             self.assertNotIn("SPRING_DATASOURCE_URL", env)
 
+    def test_local_defaults_enable_loopback_redis(self):
+        with patch.dict(os.environ, {}, clear=True), \
+                patch.object(dev, "read_env", return_value={}):
+            env = dev.local_environment()
+            self.assertEqual(env["REDIS_ENABLED"], "true")
+            self.assertEqual(env["REDIS_PORT"], "16379")
+
+    def test_local_redis_port_must_be_a_port(self):
+        with patch.dict(os.environ, {"REDIS_PORT": "70000"}, clear=True), \
+                patch.object(dev, "read_env", return_value={}):
+            with self.assertRaises(ValueError):
+                dev.local_environment()
+
+    def test_external_redis_host_skips_local_container(self):
+        env = {"REDIS_ENABLED": "true", "REDIS_PORT": "16379", "REDIS_HOST": "redis.internal"}
+        with patch.object(dev, "owned_container") as owned:
+            dev.redis_up("podman", env)
+            owned.assert_not_called()
+
 
 class ResourceTests(unittest.TestCase):
     def test_database_owned_by_another_workspace_is_rejected(self):
@@ -63,6 +83,23 @@ class ResourceTests(unittest.TestCase):
         with patch.object(dev, "inspect_container", return_value=info):
             with self.assertRaisesRegex(ValueError, "another workspace"):
                 dev.owned_container("podman")
+
+    def test_redis_owned_by_another_workspace_is_rejected(self):
+        info = {"Config": {"Labels": {"loopcraft.root": "/another/workspace"}}}
+        with patch.object(dev, "inspect_container", return_value=info):
+            with self.assertRaisesRegex(ValueError, "another workspace"):
+                dev.owned_container("podman", dev.REDIS_NAME)
+
+    def test_redis_port_change_requires_down_before_up(self):
+        info = {"Config": {"Labels": {"loopcraft.root": str(dev.ROOT)}},
+                "HostConfig": {"PortBindings": {"6379/tcp": [{"HostPort": "16380", "HostIp": "127.0.0.1"}]}},
+                "State": {"Running": True}}
+        with patch.object(dev, "runtime", return_value="podman"), \
+                patch.object(dev, "local_environment",
+                             return_value={"REDIS_ENABLED": "true", "REDIS_PORT": "16379"}), \
+                patch.object(dev, "inspect_container", return_value=info):
+            with self.assertRaisesRegex(ValueError, "redis down"):
+                dev.redis_command("up")
 
     def test_sql_path_escape_is_rejected_before_database_start(self):
         with patch.object(dev, "runtime", return_value="podman"), \

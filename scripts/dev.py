@@ -28,6 +28,8 @@ LOCAL_NAME = "loopcraft-local-" + hashlib.sha256(str(ROOT).encode()).hexdigest()
 IMAGE = "docker.io/library/postgres:17-alpine"
 STORAGE_NAME = LOCAL_NAME.replace("local", "rustfs", 1)
 STORAGE_IMAGE = "docker.io/rustfs/rustfs@sha256:128220dc9382bac81940a1a9616ee8c274a3f3b8f647eedbeb50df5bb8b49922"
+REDIS_NAME = LOCAL_NAME.replace("local", "redis", 1)
+REDIS_IMAGE = "docker.io/library/redis:7.4-alpine"
 
 
 def read_env(path):
@@ -59,7 +61,7 @@ def environment():
 
 def test_environment():
     # Tests never load dotenv files or inherit application/model credentials.
-    prefixes = ("SPRING_", "LOOPCRAFT_", "LLM_", "DB_", "TEST_DB_", "AGENT_", "LOGGING_", "BOOTSTRAP_ADMIN_", "SESSION_COOKIE_", "STORAGE_", "AWS_", "RUSTFS_", "SKILL_")
+    prefixes = ("SPRING_", "LOOPCRAFT_", "LLM_", "DB_", "TEST_DB_", "AGENT_", "LOGGING_", "BOOTSTRAP_ADMIN_", "SESSION_COOKIE_", "STORAGE_", "AWS_", "RUSTFS_", "SKILL_", "REDIS_")
     excluded = {"JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "MAVEN_OPTS", "ENABLE_LLM",
                 "LOG_DIR", "LOG_LEVEL_ROOT", "LOG_LEVEL_APP"}
     return {key: value for key, value in os.environ.items()
@@ -80,13 +82,14 @@ def local_environment():
                 "SERVER_PORT": "8080", "FRONTEND_PORT": "5173",
                 "STORAGE_ENABLED": "true", "STORAGE_ENDPOINT": "http://127.0.0.1:9000",
                 "STORAGE_REGION": "us-east-1", "SKILL_BUCKET": "loopcraft-skills",
-                "RUSTFS_CONSOLE_PORT": "9001", "RUSTFS_MANAGED": "true"}
+                "RUSTFS_CONSOLE_PORT": "9001", "RUSTFS_MANAGED": "true",
+                "REDIS_ENABLED": "true", "REDIS_PORT": "16379"}
     for key, value in defaults.items():
         env.setdefault(key, value)
     env.setdefault("LOG_DIR", str(ROOT / ".run" / "logs"))
     log_dir = Path(env["LOG_DIR"])
     env["LOG_DIR"] = str(log_dir if log_dir.is_absolute() else ROOT / log_dir)
-    for key in ("DB_PORT", "SERVER_PORT", "FRONTEND_PORT"):
+    for key in ("DB_PORT", "SERVER_PORT", "FRONTEND_PORT", "REDIS_PORT"):
         port(env[key])
     for key in ("DB_NAME", "DB_USER"):
         if not re.fullmatch(r"[a-z][a-z0-9_]*", env[key]):
@@ -143,8 +146,8 @@ def inspect_container(engine, name):
     return json.loads(result.stdout)[0]
 
 
-def owned_container(engine):
-    info = inspect_container(engine, LOCAL_NAME)
+def owned_container(engine, name=LOCAL_NAME):
+    info = inspect_container(engine, name)
     if info and info["Config"].get("Labels", {}).get("loopcraft.root") != str(ROOT):
         raise ValueError("Refusing to operate on a container owned by another workspace")
     return info
@@ -168,6 +171,17 @@ def wait_database(engine, name, env):
             return
         time.sleep(1)
     raise ValueError("PostgreSQL was not ready in 60s; check container logs and local credentials")
+
+
+def wait_redis(engine, name):
+    command = [engine, "exec", name, "redis-cli", "ping"]
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip() == "PONG":
+            return
+        time.sleep(1)
+    raise ValueError("Redis was not ready in 60s; check container logs")
 
 
 def database_up(engine, env):
@@ -329,6 +343,49 @@ def database_command(action, sql_file):
         print("Applied " + str(path.relative_to(directory)) + "; record this version manually")
 
 
+def redis_up(engine, env):
+    if env["REDIS_ENABLED"].lower() == "false":
+        print("Redis disabled by REDIS_ENABLED=false", flush=True)
+        return
+    if env["REDIS_ENABLED"].lower() != "true":
+        raise ValueError("REDIS_ENABLED must be true or false")
+    if env.get("REDIS_HOST", "127.0.0.1") not in ("127.0.0.1", "localhost"):
+        print(f"External Redis assumed at {env['REDIS_HOST']}; local container not managed", flush=True)
+        return
+    info = owned_container(engine, REDIS_NAME)
+    if info:
+        bindings = info["HostConfig"]["PortBindings"].get("6379/tcp", [])
+        if not any(item["HostPort"] == env["REDIS_PORT"] and item["HostIp"] == "127.0.0.1"
+                   for item in bindings):
+            raise ValueError("REDIS_PORT changed; run redis down before redis up (volume is retained)")
+        if not info["State"]["Running"]:
+            run([engine, "start", REDIS_NAME], capture=True)
+    else:
+        run([engine, "run", "--detach", "--name", REDIS_NAME,
+             "--label", "loopcraft.root=" + str(ROOT),
+             "--publish", f"127.0.0.1:{env['REDIS_PORT']}:6379",
+             "--volume", REDIS_NAME + "-data:/data",
+             env.get("LOOPCRAFT_REDIS_IMAGE", REDIS_IMAGE)], capture=True)
+    wait_redis(engine, REDIS_NAME)
+    print(f"Redis ready on 127.0.0.1:{env['REDIS_PORT']} ({REDIS_NAME})", flush=True)
+
+
+def redis_command(action):
+    env, engine = local_environment(), runtime()
+    if action == "up":
+        redis_up(engine, env)
+    elif action == "down":
+        info = owned_container(engine, REDIS_NAME)
+        if info:
+            if info["State"]["Running"]:
+                run([engine, "stop", "--time", "10", REDIS_NAME], capture=True)
+            run([engine, "rm", REDIS_NAME], capture=True)
+        print("Local Redis container removed; data volume retained")
+    else:
+        info = owned_container(engine, REDIS_NAME)
+        print("absent" if info is None else info["State"]["Status"])
+
+
 def stop_children(children):
     # Only signal process groups created by this invocation.
     for child in children:
@@ -387,6 +444,7 @@ def development(scope):
         engine = runtime()
         database_up(engine, env)
         storage_up(engine, env)
+        redis_up(engine, env)
     log_dir = ROOT / ".run"
     log_dir.mkdir(exist_ok=True)
     children, logs = [], []
@@ -403,7 +461,7 @@ def development(scope):
             print(f"{name} ready: {url} (log: .run/{name}.log)", flush=True)
         if scope in ("all", "backend"):
             print(f"Application log: {Path(env['LOG_DIR']) / 'loopcraft.log'}", flush=True)
-        print("Ctrl+C stops these application processes; PostgreSQL and RustFS remain running; data is retained", flush=True)
+        print("Ctrl+C stops these application processes; PostgreSQL, RustFS and Redis remain running; data is retained", flush=True)
         while True:
             if any(child.poll() is not None for child in children):
                 raise ValueError("A development process exited; inspect .run/*.log")
@@ -463,6 +521,8 @@ def main():
     db.add_argument("sql_file", nargs="?")
     storage = commands.add_parser("storage", help="Manage local RustFS without deleting data")
     storage.add_argument("action", choices=("up", "down", "status"))
+    redis = commands.add_parser("redis", help="Manage only this workspace's local Redis")
+    redis.add_argument("action", choices=("up", "down", "status"))
     test = commands.add_parser("test", help="Checks without real model calls; integration uses a disposable DB")
     test.add_argument("scope", choices=("repo", "backend", "frontend", "all", "integration"),
                       nargs="?", default="all")
@@ -475,6 +535,8 @@ def main():
         database_command(args.action, args.sql_file)
     elif args.command == "storage":
         storage_command(args.action)
+    elif args.command == "redis":
+        redis_command(args.action)
     elif args.command == "test":
         tests(args.scope)
 

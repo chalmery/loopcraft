@@ -2,7 +2,7 @@
 
 LoopCraft 是用于学习和构建云端 ReAct Agent 的全栈项目。当前提供用户、租户、供应商连接/模型管理及 RustFS 通用文件存储能力；前端支持登录、个人设置、租户设置、模型接入和平台账号管理。Agent 对话入口、ReAct 循环和会话持久化尚未接入。
 
-- `backend/`：Java 25、Spring Boot 4.1.1、PostgreSQL、MyBatis-Plus、Maven。基础包为 `io.github.chalmery.loopcraft`。
+- `backend/`：Java 25、Spring Boot 4.1.1、PostgreSQL、Redis、MyBatis-Plus、Maven。基础包为 `io.github.chalmery.loopcraft`。
 - `frontend/`：Next.js App Router、React、TypeScript、Bun、Tailwind CSS 4、shadcn/ui、Lucide；运行与组件说明见 [前端 README](frontend/README.md)。
 - 协作约束见 [根目录 AGENTS](AGENTS.md)、[后端 AGENTS](backend/AGENTS.md)、[前端 AGENTS](frontend/AGENTS.md)。实现以当前代码、配置和测试为准，变更历史通过 Git 查询。
 - [ReAct 主流程调研](docs/changes/react-agent-loop/proposal.md) 保留为待讨论方案，调研中的实现快照可能已经变化，不代表当前实现或开发授权。
@@ -18,10 +18,10 @@ cd ..
 ./scripts/dev.sh up
 ```
 
-默认前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`，PostgreSQL 17 位于 `127.0.0.1:15432`，RustFS API 位于 `127.0.0.1:9000`、控制台位于 `http://127.0.0.1:9001/rustfs/console/`。启动器依次准备数据库、RustFS 和 Skill 私有桶，再启动应用并检查 HTTP 就绪；各服务仅监听本机回环地址。默认无需模型凭证。
+默认前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`，PostgreSQL 17 位于 `127.0.0.1:15432`，Redis 7.4 位于 `127.0.0.1:16379`，RustFS API 位于 `127.0.0.1:9000`、控制台位于 `http://127.0.0.1:9001/rustfs/console/`。启动器依次准备数据库、RustFS、Skill 私有桶和 Redis，再启动应用并检查 HTTP 就绪；各服务仅监听本机回环地址。默认无需模型凭证。
 
 ```bash
-./scripts/dev.sh up backend    # 数据库 + 文件存储 + 后端
+./scripts/dev.sh up backend    # 数据库 + Redis + 文件存储 + 后端
 ./scripts/dev.sh up frontend   # 仅前端
 ./scripts/dev.sh db up         # 仅数据库，重复执行可复用
 ./scripts/dev.sh db status
@@ -29,9 +29,12 @@ cd ..
 ./scripts/dev.sh storage up    # 仅文件存储，重复执行可复用并检查 Skill 桶
 ./scripts/dev.sh storage status
 ./scripts/dev.sh storage down  # 停止 RustFS，保留容器和数据卷
+./scripts/dev.sh redis up      # 仅 Redis，重复执行可复用
+./scripts/dev.sh redis status
+./scripts/dev.sh redis down    # 删除本地 Redis 容器，保留数据卷
 ```
 
-Ctrl+C / SIGTERM 停止本次启动的前后端，数据库与 RustFS 继续运行；任一应用退出也会停止本次启动的另一个应用。数据保存在持久命名卷中，脚本不提供删除持久化数据的命令。
+Ctrl+C / SIGTERM 停止本次启动的前后端，数据库、RustFS 与 Redis 继续运行；任一应用退出也会停止本次启动的另一个应用。数据保存在持久命名卷中，脚本不提供删除持久化数据的命令。
 
 ## 环境与配置
 
@@ -156,6 +159,14 @@ storage.delete(location);
 该模块不开放 HTTP 接口，也不建立文件元数据表。业务调用前须校验权限，从可信业务记录获取桶和 Key，不将客户端地址直接透传；业务归属、文件引用持久化及数据库事务失败后的文件清理由调用模块负责。读取/查询返回 404 时抛出 `FileStorageException(NOT_FOUND)`（HEAD 不能区分缺桶和缺对象），其余远端故障归一化为 `UNAVAILABLE`，不向上层传播 SDK 的原始异常文本；本地文件 I/O 错误保留为 `IOException`。
 
 常规测试使用随机端口的本地 HTTP 桩运行真实 S3 SDK，不连接开发 RustFS，不读取存储凭证。
+
+## Redis
+
+本地启动器默认创建 Redis 7.4 容器（可用 `LOOPCRAFT_REDIS_IMAGE` 覆盖镜像），仅监听 `127.0.0.1:16379`，可用 `REDIS_PORT` 修改端口，修改后先 `redis down` 再 `redis up`。数据保存在持久命名卷中，`redis down` 删除容器但保留数据卷。`REDIS_ENABLED=false` 同时跳过本地容器和应用侧装配；配置非回环 `REDIS_HOST` 表示使用外部 Redis，启动器不再管理本地容器，连通性由应用健康检查体现。
+
+后端通过 `spring-data-redis` + Lettuce 直连，不引入 Boot starter 自动装配。仅当 `REDIS_ENABLED=true`（默认 false）时按 `loopcraft.redis.*` 装配 `LettuceConnectionFactory` 与 `StringRedisTemplate`，并在 `/actuator/health` 增加真实 PING 探测，因此 `dev.sh up` 的就绪检查覆盖应用与 Redis 的连通性；启动本身不访问 Redis，连接按需建立。`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_CONNECT_TIMEOUT`、`REDIS_TIMEOUT` 可覆盖连接参数。
+
+当前除健康检查外没有业务模块使用 Redis：会话和登录防爆破计数仍在单实例内存中，是否迁移到共享存储需另行讨论后实施。常规测试不连接 Redis，未启用时不创建任何相关 Bean。
 
 ## 日志与排查
 

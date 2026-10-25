@@ -17,7 +17,18 @@ LoopCraft 是一个用于**学习和构建云端 ReAct Agent** 的全栈项目�
 | Skill 管理 | 版本化技能包（ZIP + SKILL.md）、RustFS 对象存储、软删除与清理补偿 | ✅ |
 | 多轮会话 / 消息历史 / OpenAPI | 见后续路线 | 📋 |
 
-📋 完整路线见 [核心流程路线图](docs/changes/react-agent-loop/roadmap.html)；设计取舍与决策记录见 [ReAct 提案](docs/changes/react-agent-loop/proposal.md)。
+📋 完整路线见 [核心流程路线图](docs/changes/react-agent-loop/roadmap.html)（可交互，悬停条目在循环图上定位作用位置）；设计取舍与决策记录见 [ReAct 提案](docs/changes/react-agent-loop/proposal.md)。
+
+## 下一步计划
+
+按当前优先级排列，每项的触发条件与提案依据见路线图：
+
+- [ ] **补测试欠账（最优先）**：HTTP / SSE 接口级测试、Skill 工具行为测试、模型链路与适配器离线桩、真实模型端到端联调
+- [ ] **会话与状态**：session 多轮会话容器、全量消息历史落库、run 取消接口、运行恢复（checkpoint）
+- [ ] **循环增强**：Anthropic 协议运行时、token 级流式输出、并发工具执行、上下文自动压缩、自动重试与续写、运行中插话
+- [ ] **工具面**：MCP 动态工具、业务写操作工具（需授权与幂等语义）、结构感知的结果截断
+- [ ] **通道与开放**：前端聊天界面（SSE 消费）、run 列表查询、OpenAPI（API Token 认证）、多实例水平扩展
+- [ ] **可观测**：脱敏诊断日志、运行审计查询、token 用量与成本计量
 
 ## 架构速览
 

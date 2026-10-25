@@ -1,4 +1,4 @@
-package io.github.chalmery.loopcraft.agent.model;
+package io.github.chalmery.loopcraft.agent.core;
 
 /** 一次运行的终态结果；answer 仅在 COMPLETED 时非空。 */
 public record RunOutcome(RunStatus status, RunFailure failure, String answer, int iterations, int toolCalls) {

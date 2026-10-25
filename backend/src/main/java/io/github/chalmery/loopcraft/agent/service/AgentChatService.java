@@ -3,12 +3,13 @@ package io.github.chalmery.loopcraft.agent.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 
 import io.github.chalmery.loopcraft.agent.config.AgentProperties;
+import io.github.chalmery.loopcraft.agent.core.Agent;
 import io.github.chalmery.loopcraft.agent.dto.AgentViews;
-import io.github.chalmery.loopcraft.agent.model.AgentRequest;
+import io.github.chalmery.loopcraft.agent.core.AgentRequest;
 import io.github.chalmery.loopcraft.agent.model.AgentRunEvent;
-import io.github.chalmery.loopcraft.agent.model.RunBudget;
-import io.github.chalmery.loopcraft.agent.model.RunListener;
-import io.github.chalmery.loopcraft.agent.model.RunOutcome;
+import io.github.chalmery.loopcraft.agent.core.RunBudget;
+import io.github.chalmery.loopcraft.agent.core.RunListener;
+import io.github.chalmery.loopcraft.agent.core.RunOutcome;
 import io.github.chalmery.loopcraft.identity.model.UserAccount;
 import io.github.chalmery.loopcraft.identity.service.IdentityService;
 import io.github.chalmery.loopcraft.llm.service.ChatModelFactory;

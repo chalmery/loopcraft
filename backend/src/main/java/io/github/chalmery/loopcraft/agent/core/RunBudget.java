@@ -1,4 +1,4 @@
-package io.github.chalmery.loopcraft.agent.model;
+package io.github.chalmery.loopcraft.agent.core;
 
 import java.time.Duration;
 

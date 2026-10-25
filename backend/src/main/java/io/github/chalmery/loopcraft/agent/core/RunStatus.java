@@ -1,4 +1,4 @@
-package io.github.chalmery.loopcraft.agent.model;
+package io.github.chalmery.loopcraft.agent.core;
 
 /** 一次 Agent 运行的终止状态（提案 7.2）。 */
 public enum RunStatus {

@@ -16,7 +16,7 @@
 - 按业务能力/功能分包，不要把所有 Controller、Service、Repository 分别堆进全局大包。相关代码优先放在同一能力边界内；只有跨能力复用且确实稳定的内容才上移。
 - 包名全小写，类型名用 `UpperCamelCase`，方法和字段用 `lowerCamelCase`，常量用 `UPPER_SNAKE_CASE`。一个 Java 文件只放一个主要顶层类型，类型名与文件名一致。
 - 根包统一为 `io.github.chalmery.loopcraft`。按实际功能逐步创建包，不预建空包。建议边界如下：
-  - `agent`：ReAct 执行循环、轮次/状态，以及 Agent 级编排。
+  - `agent`：ReAct 执行循环、轮次/状态，以及 Agent 级编排。循环本体与运行类型（`Agent`、`Run*`、`AgentRequest`）放在 `agent.core`，不依赖数据库、HTTP 与通道；持久化实体、编排与接口留在其余子包。
   - `mcp`：MCP 客户端与传输配置、连接生命周期、能力发现、MCP 工具适配和协议错误处理。MCP 专属实现集中在此包，不散落到通用 `tool`、`config` 或 `service` 包中。
   - `tool`：LoopCraft 自己实现的非 MCP 工具、工具定义和执行入口。MCP 暴露的工具仍由 `mcp` 负责接入，再通过清楚的边界交给 Agent 使用。
   - `web`：跨模块的 HTTP 基础能力，如请求日志、过滤器和通用异常映射；业务 Controller 和 DTO 优先放在各自功能包内，不在 Controller 中编排 Agent 轮次或直接实现工具。

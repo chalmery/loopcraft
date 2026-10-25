@@ -1,11 +1,5 @@
-package io.github.chalmery.loopcraft.agent.service;
+package io.github.chalmery.loopcraft.agent.core;
 
-import io.github.chalmery.loopcraft.agent.model.AgentRequest;
-import io.github.chalmery.loopcraft.agent.model.RunBudget;
-import io.github.chalmery.loopcraft.agent.model.RunFailure;
-import io.github.chalmery.loopcraft.agent.model.RunListener;
-import io.github.chalmery.loopcraft.agent.model.RunOutcome;
-import io.github.chalmery.loopcraft.agent.model.RunStatus;
 import io.github.chalmery.loopcraft.tool.ToolExecutor;
 
 import org.springframework.ai.chat.messages.AssistantMessage;

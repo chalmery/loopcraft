@@ -1,4 +1,4 @@
-package io.github.chalmery.loopcraft.agent.model;
+package io.github.chalmery.loopcraft.agent.core;
 
 /** 循环过程观察接口；首版供测试与诊断使用，外围通道（SSE 等）接入时消费同一接口。 */
 public interface RunListener {

@@ -1,4 +1,4 @@
-package io.github.chalmery.loopcraft.agent.model;
+package io.github.chalmery.loopcraft.agent.core;
 
 /** FAILED 状态下的稳定原因码（提案 7.2）。 */
 public enum RunFailure {

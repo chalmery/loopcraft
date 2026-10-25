@@ -7,7 +7,7 @@ import io.github.chalmery.loopcraft.agent.mapper.AgentRunEventMapper;
 import io.github.chalmery.loopcraft.agent.mapper.AgentRunMapper;
 import io.github.chalmery.loopcraft.agent.model.AgentRun;
 import io.github.chalmery.loopcraft.agent.model.AgentRunEvent;
-import io.github.chalmery.loopcraft.agent.model.RunOutcome;
+import io.github.chalmery.loopcraft.agent.core.RunOutcome;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

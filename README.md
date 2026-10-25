@@ -1,13 +1,38 @@
 # LoopCraft
 
-LoopCraft 是用于学习和构建云端 ReAct Agent 的全栈项目。当前提供用户、租户、供应商连接/模型管理及 RustFS 通用文件存储能力；前端支持登录、个人设置、租户设置、模型接入和平台账号管理。Agent 对话入口、ReAct 循环和会话持久化尚未接入。
+![Java](https://img.shields.io/badge/Java-25-orange) ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-brightgreen) ![Next.js](https://img.shields.io/badge/Next.js-16-black) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-blue) ![Redis](https://img.shields.io/badge/Redis-7.4-red) ![RustFS](https://img.shields.io/badge/RustFS-S3-brown)
 
-- `backend/`：Java 25、Spring Boot 4.1.1、PostgreSQL、Redis、MyBatis-Plus、Maven。基础包为 `io.github.chalmery.loopcraft`。
-- `frontend/`：Next.js App Router、React、TypeScript、Bun、Tailwind CSS 4、shadcn/ui、Lucide；运行与组件说明见 [前端 README](frontend/README.md)。
-- 协作约束见 [根目录 AGENTS](AGENTS.md)、[后端 AGENTS](backend/AGENTS.md)、[前端 AGENTS](frontend/AGENTS.md)。实现以当前代码、配置和测试为准，变更历史通过 Git 查询。
-- [ReAct 主流程调研](docs/changes/react-agent-loop/proposal.md) 保留为待讨论方案，调研中的实现快照可能已经变化，不代表当前实现或开发授权。
+LoopCraft 是一个用于**学习和构建云端 ReAct Agent** 的全栈项目：手写「模型 → 工具 → 观察结果」执行循环，配套多租户的身份、模型接入、Agent 模板与 Skill 管理。循环本体保持显式、可读、可测试，不被框架接管。
 
-## 本地启动
+## 功能总览
+
+| 能力域 | 说明 | 状态 |
+| --- | --- | --- |
+| ReAct 执行循环 | `agent.core` 手写循环：预算与超时、响应判定顺序、call id 配对、终止状态机与错误回填；24 项假模型确定性测试 | ✅ |
+| Agent 运行通道 | chat 受理（202 + runId）、SSE 事件订阅（断线按序号续传）、Redis Stream 热通道 + PostgreSQL 持久化兜底 | ✅ |
+| 内置工具 | `list_skills` / `read_skill` 只读工具，按模板绑定技能与版本解析 | ✅ |
+| 身份与租户 | 账号、租户、成员角色、Session + CSRF、登录防爆破 | ✅ |
+| 模型接入 | 租户供应商连接（OpenAI / Anthropic 兼容）、加密 API Key、目录发现与导入 | ✅ |
+| Agent 模板 | 租户共享模板：模型、提示词、温度、迭代与超时预算、Skill 绑定 | ✅ |
+| Skill 管理 | 版本化技能包（ZIP + SKILL.md）、RustFS 对象存储、软删除与清理补偿 | ✅ |
+| 多轮会话 / 消息历史 / OpenAPI | 见后续路线 | 📋 |
+
+📋 完整路线见 [核心流程路线图](docs/changes/react-agent-loop/roadmap.html)；设计取舍与决策记录见 [ReAct 提案](docs/changes/react-agent-loop/proposal.md)。
+
+## 架构速览
+
+```text
+frontend/  Next.js App Router · React · TypeScript · Bun · Tailwind 4 · shadcn/ui
+backend/   Java 25 · Spring Boot MVC（虚拟线程）· MyBatis-Plus
+             agent.core      ReAct 循环本体（仅依赖 Spring AI 类型，无 DB/HTTP/Redis）
+             agent.*         受理编排、SSE 通道、运行持久化
+             tool / llm / template / skill / identity / storage / redis
+           PostgreSQL 17（业务与运行记录）· Redis 7.4（事件热通道）· RustFS（S3 对象存储）
+```
+
+协作约束见 [根目录 AGENTS](AGENTS.md)、[后端 AGENTS](backend/AGENTS.md)、[前端 AGENTS](frontend/AGENTS.md)；表结构总览见 [database-schema.md](docs/database-schema.md)。实现以当前代码、配置和测试为准，变更历史通过 Git 查询。
+
+## 快速开始
 
 需要 Java 25、Python 3.10+、Node.js 20.9+、Bun，以及可运行的 Docker 或 Podman。首次安装前端依赖，再回到仓库根目录启动：
 
@@ -18,23 +43,19 @@ cd ..
 ./scripts/dev.sh up
 ```
 
-默认前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`，PostgreSQL 17 位于 `127.0.0.1:15432`，Redis 7.4 位于 `127.0.0.1:16379`，RustFS API 位于 `127.0.0.1:9000`、控制台位于 `http://127.0.0.1:9001/rustfs/console/`。启动器依次准备数据库、RustFS、Skill 私有桶和 Redis，再启动应用并检查 HTTP 就绪；各服务仅监听本机回环地址。默认无需模型凭证。
+默认前端 `http://127.0.0.1:5173`，后端 `http://127.0.0.1:8080`，PostgreSQL 位于 `127.0.0.1:15432`，Redis 位于 `127.0.0.1:16379`，RustFS API 位于 `127.0.0.1:9000`（控制台 `http://127.0.0.1:9001/rustfs/console/`）。启动器依次准备数据库、RustFS、Skill 私有桶和 Redis，再启动应用并检查 HTTP 就绪；各服务仅监听本机回环地址，默认无需模型凭证。
+
+### 服务管理
 
 ```bash
 ./scripts/dev.sh up backend    # 数据库 + Redis + 文件存储 + 后端
 ./scripts/dev.sh up frontend   # 仅前端
-./scripts/dev.sh db up         # 仅数据库，重复执行可复用
-./scripts/dev.sh db status
-./scripts/dev.sh db down       # 删除本地数据库容器，保留数据卷
-./scripts/dev.sh storage up    # 仅文件存储，重复执行可复用并检查 Skill 桶
-./scripts/dev.sh storage status
-./scripts/dev.sh storage down  # 停止 RustFS，保留容器和数据卷
-./scripts/dev.sh redis up      # 仅 Redis，重复执行可复用
-./scripts/dev.sh redis status
-./scripts/dev.sh redis down    # 删除本地 Redis 容器，保留数据卷
+./scripts/dev.sh db up|status|down          # PostgreSQL（down 删容器留数据卷）
+./scripts/dev.sh storage up|status|down     # RustFS
+./scripts/dev.sh redis up|status|down       # Redis
 ```
 
-Ctrl+C / SIGTERM 停止本次启动的前后端，数据库、RustFS 与 Redis 继续运行；任一应用退出也会停止本次启动的另一个应用。数据保存在持久命名卷中，脚本不提供删除持久化数据的命令。
+Ctrl+C / SIGTERM 停止本次启动的前后端，数据库、RustFS 与 Redis 继续运行；任一应用退出也会停止另一个。数据保存在持久命名卷中，脚本不提供删除持久化数据的命令。
 
 ## 环境与配置
 
@@ -44,24 +65,22 @@ Ctrl+C / SIGTERM 停止本次启动的前后端，数据库、RustFS 与 Redis �
 | 常规测试 | `test` | 不读取 `.env` | 禁用数据源自动装配 |
 | 数据库测试 | `integration` | 不读取 `.env` | 一次性 PostgreSQL |
 
-当前仅提供 `dev` 运行环境；`test` 和 `integration` 仅用于自动化测试。公共配置在 [application.yml](backend/src/main/resources/application.yml)，开发配置在 [application-dev.yml](backend/src/main/resources/application-dev.yml)。启动器只读 `env/dev/.env`，不加载 `backend/.env`；`env/` 整个目录仅保留在本地，不纳入 Git。首次使用时创建 `env/dev/.env`，填写需要覆盖的配置。进程环境变量优先，文件值按字面读取，不执行 shell 或展开 `$VAR`，含空格或 `#` 的值需加引号。
+当前仅提供 `dev` 运行环境。公共配置在 [application.yml](backend/src/main/resources/application.yml)，开发配置在 [application-dev.yml](backend/src/main/resources/application-dev.yml)。首次使用创建 `env/dev/.env`（整个 `env/` 不入 Git），填写需要覆盖的配置；进程环境变量优先，文件值按字面读取不展开 `$VAR`。
 
-本地默认数据库名 `loopcraft_local`、用户 `loopcraft`、密码 `loopcraft_local_only`，仅供本机开发。启动器按本地端口和数据库字段生成 `DB_URL`，按 `SERVER_PORT` 生成 `BACKEND_URL`。需要改端口时在本地 `.env` 设置 `DB_PORT`、`SERVER_PORT`、`FRONTEND_PORT`。
-
-容器和命名卷名称包含仓库路径的哈希；多个 checkout 同时运行仍需设置不同端口。修改数据库端口后先 `db down` 再 `db up`；修改 `.env` 不会更新已有卷中的账号和密码。默认优先 Docker，也可通过 `CONTAINER_RUNTIME=podman` 选择 Podman。
+本地默认数据库 `loopcraft_local` / `loopcraft` / `loopcraft_local_only`，仅供本机开发。改端口用 `DB_PORT`、`SERVER_PORT`、`FRONTEND_PORT`；修改数据库端口后先 `db down` 再 `db up`。容器与命名卷名称含仓库路径哈希，多 checkout 并行需设不同端口。默认优先 Docker，可用 `CONTAINER_RUNTIME=podman` 选择 Podman。
 
 ## 建表与首次管理员
 
-应用不会自动建表或升级结构。先启动数据库，按 [用户与租户 SQL](backend/sql/identity/README.md) 依次执行三个建表文件，再按 [模型接入 SQL](backend/sql/llm/README.md) 执行来源、模型两个文件。例如：
+应用不会自动建表或升级结构。先启动数据库，按各模块 README 顺序执行建表文件（identity → llm → skill → template → agent）：
 
 ```bash
 ./scripts/dev.sh db up
 ./scripts/dev.sh db sql identity/create_user.sql
 ```
 
-SQL 路径相对 `backend/sql/`，单个文件在同一事务中执行，失败即回滚。已有数据库只执行尚未应用的脚本；依赖顺序与手动执行方式见 [SQL README](backend/sql/README.md)。
+SQL 路径相对 `backend/sql/`，单个文件在同一事务中执行，失败即回滚；依赖顺序见 [SQL README](backend/sql/README.md)，表关系总览见 [database-schema.md](docs/database-schema.md)。
 
-建表后在 `env/dev/.env` 中配置首次管理员，再启动后端：
+建表后在 `env/dev/.env` 配置首次管理员并启动后端：
 
 ```dotenv
 BOOTSTRAP_ADMIN_ENABLED=true
@@ -69,65 +88,64 @@ BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=replace-with-a-private-password
 ```
 
-密码至少 12 个字符，须替换示例值。初始化只在用户表为空时创建管理员；成功后关闭 `BOOTSTRAP_ADMIN_ENABLED` 并移除初始化密码。没有预置密码或匿名注册入口。
+密码至少 12 位，须替换示例值。初始化只在用户表为空时执行；成功后关闭开关并移除密码，没有预置密码或匿名注册。
 
-「平台管理」分组包含「租户管理」「账号管理」两个分页 CRUD 页面，仅平台管理员可访问；支持右侧栏新增/编辑和二次确认删除，暂不提供搜索条件。平台管理员创建账号、管理租户及交接负责人；当前租户负责人通过「租户设置」管理成员。平台管理员账号禁止停用或删除，负责人账号需先交接，租户存在关联业务数据时禁止直接删除。API 使用 Session，写操作需要 CSRF 令牌。自行调用 API 时，先 `GET /api/auth/csrf`，从响应 `data` 读取 `headerName` 和 `token`，携带 Cookie 和该请求头登录 `POST /api/auth/login`；登录后重新获取令牌，用于后续写操作。
-
-Session 保存在单实例内存中，空闲 30 分钟过期，服务重启需重新登录；修改密码或启停账号会使旧会话失效。前端收到 401 后返回登录页；CSRF 失效返回 HTTP 403、业务码 `40301`，前端刷新令牌后仅重试一次，业务权限不足不会重试。本地 HTTP 默认关闭 Secure Cookie，可用 `SESSION_COOKIE_SECURE` 覆盖。
-
-登录防爆破默认按账号和来源 IP 双重限制：同一账号在 15 分钟窗口内连续失败 5 次后冷却 15 分钟，用户名大小写共用计数；成功认证清空该账号的失败次数。同一 IP 每 15 分钟最多放行 30 次登录尝试（含成功），更换账号或 Session 不会重置来源计数。不存在或已停用的账号同样计数；并发认证会预占账号名额，超限请求在查库和密码计算前返回 HTTP/业务码 `429`、统一提示及 `Retry-After` 秒数，拒绝请求不会延长冷却。CSRF 和请求格式校验仍先执行。
-
-限制参数位于 `application.yml` 的 `loopcraft.identity.login-protection`，可通过 Spring 环境变量覆盖，例如 `LOOPCRAFT_IDENTITY_LOGINPROTECTION_ACCOUNTFAILURES`、`LOOPCRAFT_IDENTITY_LOGINPROTECTION_IPATTEMPTS`、`LOOPCRAFT_IDENTITY_LOGINPROTECTION_WINDOW`、`LOOPCRAFT_IDENTITY_LOGINPROTECTION_MAXENTRIES`。计数保存在单实例内存，重启清空，不跨实例共享；最多保留 10000 条账号/IP 记录，过期记录在后续登录时回收，容量耗尽时拒绝新记录而不淘汰有效限制。IP 取服务端 `getRemoteAddr()`，不直接读取 `X-Forwarded-For` / `Forwarded`；当前 Next.js 转发下用户会共享代理 IP 的额度，应按访问规模调整阈值。部署时如需真实客户端 IP，须在可信代理边界配置容器的地址解析并阻止绕过代理直连；多实例部署需改用共享限流存储或网关统一限流。
+「平台管理」提供租户、账号管理（仅平台管理员）；租户负责人通过「租户设置」管理成员。API 使用 Session，写操作需 CSRF 令牌：自行调用时先 `GET /api/auth/csrf` 取 `headerName` 和 `token`，携带 Cookie 登录后再取新令牌用于写操作。Session 单实例内存、空闲 30 分钟过期；登录防爆破按账号与来源 IP 双重限制（默认 15 分钟窗口内账号 5 次、IP 30 次，超限返回 429 与 `Retry-After`），参数见 `loopcraft.identity.login-protection`，可经 Spring 环境变量覆盖；计数不跨实例共享，多实例部署需共享限流存储或网关限流。
 
 ## 模型接入
 
-进入租户后选择「模型接入」。同租户可为同一供应商建立多个连接，每个连接维护多个模型。普通成员只读，当前负责人和平台管理员可新增、编辑、启停、删除，以及查询供应商候选并勾选导入。来源名在租户内唯一，实际模型 ID 在来源内唯一且区分大小写。重复导入跳过已有记录，不覆盖名称或重新启用。
+进入租户后选择「模型接入」。同租户可为同一供应商建多个连接，每个连接维护多个模型；普通成员只读，负责人和平台管理员可管理并查询供应商候选导入。来源名租户内唯一，模型 ID 来源内唯一。
 
-首版支持 OpenAI 兼容和 Anthropic 兼容模型目录。API 根地址由用户完整填写，例如 `https://api.example.com/v1`，服务端只追加 `/models`。保存连接不调用供应商；可暂不配置 API Key，查询候选前须配置。候选查询不自动写库；请求 15 秒超时，不跟随重定向，响应上限 2 MiB，单次上游目录最多 2000 条，每页候选最多 100 条。OpenAI 列表在后端分页，Anthropic 使用 `after_id`；目录变化后可重新查询。401/403 归一化为 502 认证失败，超时 504，仅 404/405/501 视为列表不支持，可手动添加。协议依据 [OpenAI Models](https://developers.openai.com/api/reference/resources/models/methods/list) 和 [Anthropic Models](https://platform.claude.com/docs/en/api/models/list)。
-
-保存非空密钥前，在 `env/dev/.env` 配置 `LLM_ENCRYPTION_KEY`：使用 `openssl rand -base64 32` 在本地生成，将结果保存到忽略提交的配置文件。主密钥需安全备份并保持稳定，更换后旧密文无法解密；目前没有自动轮换功能。未配置时仍可查看、管理无凭证来源和手动模型，但不能保存非空密钥或解密查询。密钥以带随机 nonce 的 AES-256-GCM 加密，租户 ID 作为附加认证数据；接口只返回 `hasApiKey`，不返回密钥、尾号或密文。编辑留空保留，明确勾选才清除，同时更换和清除会拒绝。
-
-供应商查询默认只连接公网地址：在实际连接时校验全部 DNS 结果，拒绝回环、内网、链路本地和保留地址，并直接使用已校验的地址建立连接，避免二次解析绕过。域名同时解析到公网和内网时整次拒绝；不读取系统代理，不跟随重定向。地址受限时返回 502。HTTP 客户端使用 Spring Boot 管理版本的 Apache HttpClient，以支持连接时的 DNS 校验。
-
-确需访问可信内网服务时，由部署者在本地环境设置 `LLM_DISCOVERY_ALLOWED_INTERNAL_HOSTS`，以逗号分隔精确主机名或 IP，例如 `models.internal.example`；不支持通配符或子域自动放行。此配置授予该主机的内网访问能力，不能由租户接口修改。未配置时默认不放行；保存连接仍只校验字段，不发起 DNS 或供应商请求。
-
-停用连接保留各模型自身状态，仍允许维护。删除来源和模型在事务中完成；新增表会继续保护有关联数据的租户不被删除。模板通过真实关联与限制删除外键保护运行模型和摘要模型；尚未实现 Agent 推理调用。模型编辑可维护最大上下文 Token 数及温度支持情况/范围，历史记录默认未知。目录未提供可靠能力信息时手动维护，不根据模型名称推测上限。
+- **协议**：OpenAI 兼容与 Anthropic 兼容目录；API 根地址完整填写（如 `https://api.example.com/v1`），服务端只追加 `/models`。保存连接不调供应商，查询候选须先配 Key。
+- **安全**：API Key 以 AES-256-GCM（随机 nonce + 租户绑定）加密存储，接口只返回 `hasApiKey`。配置 `LLM_ENCRYPTION_KEY`（`openssl rand -base64 32` 生成，丢失后旧密文不可解密）。供应商查询只连公网地址，连接时校验全部 DNS 结果拒绝内网/回环，不跟随重定向；可信内网服务由部署者配置 `LLM_DISCOVERY_ALLOWED_INTERNAL_HOSTS` 放行。
+- **运行时**：Agent 运行按模板引用解密构建 OpenAI 兼容模型实例（Anthropic 协议运行时暂未接入，运行返回 503）；被模板引用的模型/连接受外键保护不可删除。
 
 ## Agent 模板配置
 
-侧栏「Agent → 模板配置」提供租户共享的模板列表和整页编辑。当前租户所有成员都能创建、维护和删除模板；平台管理员身份不能替代成员身份。模板名称租户内唯一，描述选填；保存直接更新配置，支持复制和启停，不提供发布与历史版本。
+侧栏「Agent → 模板配置」提供租户共享模板的列表与整页编辑，按「基本信息 / 工具 / 上下文 / 运行设置」四个页签组织，统一保存、跨页签校验和未保存离开保护。
 
-编辑页按「基本信息 / 工具 / 上下文 / 运行设置」四个横向页签组织，统一保存、跨页签校验和未保存离开保护。工具初版只有 Skill，固定内容版本，可手动切换；摘要模型默认跟随运行模型。温度留空不发送参数；预算留空继承模型最大上下文，计算完整输入加输出预留。最近消息默认 10 条；最大循环次数默认 0，仅统计主模型调用；超时以分钟表示，支持 0.5 等小数，0 表示不限时。
+运行设置即循环预算：最大循环次数仅统计主模型调用，超时以分钟表示支持小数；工具页签绑定 Skill 并锁定内容版本；上下文页签的摘要模型、预算与保留条数已存储、待会话压缩能力启用后消费（见路线图）。模板被运行链路引用校验：停用、模型不可用或运行参数为 0 时受理明确失败，不静默回退。
 
-先按 [模板 SQL 顺序](backend/sql/template/README.md) 手动执行模型能力增量和三个新表。依赖停用或模型能力不全时允许保留和保存原配置，标记不可用；新引用只接受可用资源。被模板引用的模型/连接不能删除，Skill 在软删除和对象清理前检查引用。保存有修订号检查及同内容请求重试保护；冲突和失败保留前端草稿。
+## Agent 运行接口
 
-这些设置只负责管理和持久化，运行循环、历史摘要执行、预算控制、超时执行和沙箱接入仍待后续实现。模板不会调用真实模型或执行 Skill 脚本。
+chat 受理与 SSE 订阅（所有租户成员可发起；需启用 Redis）：
+
+```bash
+# 受理运行（需先登录并携带 CSRF 头，见「建表与首次管理员」）
+curl -X POST http://127.0.0.1:8080/api/tenants/1/agent/chat \
+  -H 'Content-Type: application/json' -b cookies.txt \
+  -d '{"templateId": 1, "message": "按笔记技能的规范总结这段内容"}'
+# → 202 {"code":202,"data":{"runId":"<uuid>"}}
+
+# 订阅事件流（EventSource 断线自动重连并携带 Last-Event-ID）
+curl -N http://127.0.0.1:8080/api/tenants/1/agent/runs/<runId>/events -b cookies.txt
+```
+
+事件集（`id` 为单调序号，内容不含工具参数与结果）：
+
+| 事件 | 数据 |
+| --- | --- |
+| `run_started` | templateId |
+| `iteration_started` | iteration、maxIterations |
+| `tool_called` / `tool_finished` | callId、name；结束附 ok、truncated、durationMs |
+| `run_finished` | status、answer（成功时）、reason（失败时）、iterations、toolCalls |
+
+事件先落 `lc_agent_run_event`（真相源）再写 Redis Stream（实时热通道，终态后短时保留）；断线重连按序号重放，热通道缺失时轮询数据库兜底；连接断开不取消任务，运行记录与终态落 `lc_agent_run`。预算耗尽、模型错误、超时等终态语义见提案第 9 节。
 
 ## Skill 管理
 
-侧栏的“插件”分组提供带图标的 Skill 管理入口，支持卡片/列表切换、来源筛选、搜索与分页；顶部“本地”显示当前租户资源，“市场”暂未开放。卡片展示最新内容的文件数与保存时间，来源数量按整个租户统计，不受分页或关键词影响。详情宽屏并排展示基本信息与内容版本，窄屏纵向排列；普通成员可新增、修改、启停和删除同租户自建 Skill，内置 Skill 仅负责人或平台管理员可管理。来源只读，HTTP 新增不接受内置来源。平台管理员沿用已有租户资源访问能力，不改动仅负责人可用的成员接口。
+侧栏「插件」分组提供 Skill 管理：卡片/列表切换、来源筛选、搜索分页；普通成员可管理自建 Skill，内置 Skill 仅负责人或平台管理员可管理。
 
-新建支持在线编写，或先导入 ZIP 再进入编辑页；两种新建方式均与详情一致，按“基本信息 / 文件与版本”标签页展示，切换保留草稿。新建页不重复提供 ZIP 上传入口，导入统一从列表发起。导入时用 SKILL.md frontmatter 的 name 预填标识和名称、description 预填描述，保存前可编辑；字段缺失或无法解析时手动补充。首次导入后的基本信息（名称、描述、标签、状态）与包内文件互不自动覆盖，已有 Skill 上传新包也不更新这些字段。标识在同租户内唯一且创建后不改；首次保存同时创建 Skill 与 v1。内容编辑支持文本新增/修改/移除与二进制文件替换，也可上传 ZIP 替换本次草稿的完整文件集合。每次保存追加不可变整包版本，旧版本只读，不做回退和版本说明，不执行脚本或接入 Agent。
-
-先按 [Skill SQL 顺序](backend/sql/skill/README.md) 手动建表。本地启动脚本默认启用 RustFS，检查并建立 Skill 私有桶；部署侧须预先建立私有 Bucket，默认 `loopcraft-skills`，可通过 `SKILL_BUCKET` 覆盖，后端应用本身不自动建桶。对象 Key 由服务端按租户、Skill 和随机标识生成，接口不返回存储地址。存储未启用时列表和基本信息仍可读取，首次创建、读文件或保存版本返回 503。
-
-包限制：ZIP 最多 20 MiB，最多 200 个文件，单文件最多 2 MiB，解压后总内容最多 10 MiB；文件路径最长 240 字符。根目录必须有非空 UTF-8 `SKILL.md`，兼容单层包目录包装。不解压到操作系统目录，不执行压缩包内文件；二进制按原字节保存，文件被当作普通数据，不跟随链接。当前不提供版本下载或从历史重新编辑。
-
-删除需要确认，先隐藏记录，后台按引用分批清理版本对象，失败保留记录重试。上传前持久化对象引用，回滚或进程中断后可恢复清理；已有环境须先执行 [Skill SQL 升级](backend/sql/skill/README.md) 中新增的两个脚本。基本信息保存使用修订号，内容保存使用最新版本基线与请求 UUID；并发冲突保留页面草稿、提示刷新，重复提交同一内容不会多建版本。
-
-API 位于 `/api/tenants/{tenantId}/skills`：GET 列表（`page/size/q` 及可选 `origin=CUSTOM|SYSTEM`，响应在分页字段外带租户级 `counts.custom/system`；每条带 `fileCount/contentUpdatedAt`）、POST multipart 首次创建；`/{id}` GET/PATCH/DELETE；`/{id}/versions` GET 分页历史、POST multipart 保存；`/{id}/versions/{number}` GET 文件集合；`/package-preview` POST multipart 校验 ZIP（不落存储）。multipart 的 `input` 是 JSON 字符串，含 `requestId` 和按 files 顺序的 `paths`，保存还需 `baseVersion`；压缩包可直接用 `archive` 替代 files/paths。PATCH 提交完整 name/description/tags/enabled/revision；不接收包内字段改写基本信息。
+- **包格式**：ZIP ≤ 20 MiB、≤ 200 文件、单文件 ≤ 2 MiB、解压后 ≤ 10 MiB；根目录必须有非空 UTF-8 `SKILL.md`。不解压到系统目录、不执行包内文件。
+- **版本**：每次保存追加不可变整包版本（对象存储），旧版本只读；基本信息与包内文件互不自动覆盖，保存带修订号与幂等请求保护。
+- **Agent 接入**：`list_skills` / `read_skill` 两个内置只读工具按模板绑定解析技能与版本；`read_skill` 返回绑定版本的 `SKILL.md` 内容，未绑定 slug、存储不可用等可预期失败回填错误观察，不中断运行。
+- **API**：`/api/tenants/{tenantId}/skills`（列表/创建/编辑/删除/版本历史/内容/包预检），细节见 [Skill SQL README](backend/sql/skill/README.md) 与前端页面。
 
 ## 文件存储
 
-本地启动器固定 RustFS 1.0.3 镜像摘要，默认创建当前仓库专属容器和数据卷。未配置存储凭证时，随机生成并保存在忽略提交的 `.run/storage.env`（权限 `600`），后端沿用同一组凭证；请保留该文件或在 `env/dev/.env` 配置匹配的 `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`。显式复用此前安装并带有 `io.local.rustfs=true` 标签的容器时，设置 `RUSTFS_CONTAINER` 为该容器名并填写现有凭证，启动器会核对标签、回环端口与凭证，不重建容器或修改已有数据。
+后端 `storage` 包通过 AWS SDK v2 以 S3 协议连接 RustFS（path-style），`FileStorage` 提供上传、元数据、流式读取、幂等删除与短时下载链接；模块不开放 HTTP 接口、不建元数据表，桶与 Key 由调用业务决定。
 
-本地可通过 `STORAGE_ENDPOINT` 和 `RUSTFS_CONSOLE_PORT` 修改端口。使用自行管理的外部 S3 服务时设置 `RUSTFS_MANAGED=false`，启动器只验证已存在的 Skill 桶，不创建容器或桶；通过 `STORAGE_ENABLED=false` 可完全关闭存储。独立 `storage down/status` 仅操作启动器管理或显式选中的本地容器。
-
-后端 `storage` 功能包使用 AWS SDK for Java v2，通过 S3 协议连接 RustFS，固定使用 path-style 寻址。该依赖只用于对象读写，不参与 Agent 循环；接入方式见 [RustFS Java SDK 文档](https://docs.rustfs.com/en/developer/sdk/java)。
-
-`FileStorage` 为内部能力，提供上传、元数据查询、流式读取、幂等删除和短时下载链接。每次调用显式传入 `ObjectLocation(bucket, key)`，模块不生成业务 ID，不固定桶或 Key 前缀，也不依赖租户、Skill 或制品概念。相同桶和 Key 的上传会覆盖当前对象；需要版本管理或防覆盖时由业务设计规则。桶的创建、权限、版本和生命周期由部署者管理，应用启动不访问远端、不自动建桶或设置公开访问。
-
-默认关闭，启用时在忽略提交的 `env/dev/.env` 配置：
+本地启动器固定 RustFS 镜像摘要并管理容器；未配置凭证时自动生成并保存在忽略提交的 `.run/storage.env`。默认关闭，启用时在 `env/dev/.env` 配置：
 
 ```dotenv
 STORAGE_ENABLED=true
@@ -137,69 +155,32 @@ STORAGE_ACCESS_KEY=<your-access-key>
 STORAGE_SECRET_KEY=<your-secret-key>
 ```
 
-使用 S3 API 地址，不要填控制台端口。启用而缺少凭证或配置不合法时启动失败；没有默认账号密码。连接仅使用显式配置的凭证，不从 AWS 默认凭证链发现账号。应用账号应仅被授予所需桶的对象权限。
-
-其他模块通过构造器注入 `FileStorage` 后调用，例如（`key` 由调用业务生成）：
-
-```java
-var location = new ObjectLocation(bucket, key);
-StoredFile uploaded = storage.upload(location, sourcePath, "说明.txt", "text/plain");
-StoredFile metadata = storage.stat(location);
-try (FileDownload download = storage.open(location)) {
-    download.stream().transferTo(outputStream);
-}
-URI temporaryLink = storage.presignDownload(location);
-storage.delete(location);
-```
-
-上传使用本地 `Path`，源文件在调用期间须保持不变，SDK 从磁盘读取和重试，不将整个文件加载进内存；HTTP 业务接入时可先将上传流写入临时文件，并在调用后清理。调用方负责关闭下载流。默认单文件上限 20 MiB（`STORAGE_MAX_FILE_SIZE=20MB`），单次 PUT 不超过 5 GiB；暂不提供分片或断点续传。零字节文件允许上传，中文原名保存在对象元数据中。
-
-默认连接超时 3 秒、读取超时 30 秒、SDK 调用总超时 60 秒，分别用 `STORAGE_CONNECT_TIMEOUT`、`STORAGE_READ_TIMEOUT`、`STORAGE_REQUEST_TIMEOUT` 覆盖。读取超时限制单次网络等待；流式消费的整体时间由调用业务控制。临时链接默认 5 分钟，`STORAGE_DOWNLOAD_LINK_TTL` 可设为 1 秒至 1 小时；链接使用配置的 endpoint，必须能被下载方访问，不能在签名后替换域名。持有链接者在有效期内可下载，不再经过应用 Session 校验，不能把链接作为永久文件引用或写入日志。
-
-该模块不开放 HTTP 接口，也不建立文件元数据表。业务调用前须校验权限，从可信业务记录获取桶和 Key，不将客户端地址直接透传；业务归属、文件引用持久化及数据库事务失败后的文件清理由调用模块负责。读取/查询返回 404 时抛出 `FileStorageException(NOT_FOUND)`（HEAD 不能区分缺桶和缺对象），其余远端故障归一化为 `UNAVAILABLE`，不向上层传播 SDK 的原始异常文本；本地文件 I/O 错误保留为 `IOException`。
-
-常规测试使用随机端口的本地 HTTP 桩运行真实 S3 SDK，不连接开发 RustFS，不读取存储凭证。
+使用 S3 API 地址（不要填控制台端口）；启用而缺凭证会启动失败，没有默认账号密码，不从 AWS 默认凭证链发现凭证。超时与临时链接 TTL 可经 `STORAGE_*` 覆盖；下载链接持有者可绕过应用 Session，不能作为永久引用写入日志。外部 S3 服务设 `RUSTFS_MANAGED=false`，启动器只验证 Skill 桶存在。
 
 ## Redis
 
-本地启动器默认创建 Redis 7.4 容器（可用 `LOOPCRAFT_REDIS_IMAGE` 覆盖镜像），仅监听 `127.0.0.1:16379`，可用 `REDIS_PORT` 修改端口，修改后先 `redis down` 再 `redis up`。数据保存在持久命名卷中，`redis down` 删除容器但保留数据卷。`REDIS_ENABLED=false` 同时跳过本地容器和应用侧装配；配置非回环 `REDIS_HOST` 表示使用外部 Redis，启动器不再管理本地容器，连通性由应用健康检查体现。
+本地启动器默认创建 Redis 7.4 容器（`127.0.0.1:16379`，`REDIS_PORT` 可改，改前先 `redis down`）；`REDIS_ENABLED=false` 同时跳过容器与装配；配置非回环 `REDIS_HOST` 表示使用外部实例。
 
-后端通过 `spring-data-redis` + Lettuce 直连，不引入 Boot starter 自动装配。仅当 `REDIS_ENABLED=true`（默认 false）时按 `loopcraft.redis.*` 装配 `LettuceConnectionFactory` 与 `StringRedisTemplate`，并在 `/actuator/health` 增加真实 PING 探测，因此 `dev.sh up` 的就绪检查覆盖应用与 Redis 的连通性；启动本身不访问 Redis，连接按需建立。`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`、`REDIS_CONNECT_TIMEOUT`、`REDIS_TIMEOUT` 可覆盖连接参数。
-
-当前除健康检查外没有业务模块使用 Redis：会话和登录防爆破计数仍在单实例内存中，是否迁移到共享存储需另行讨论后实施。常规测试不连接 Redis，未启用时不创建任何相关 Bean。
+后端经 `spring-data-redis` + Lettuce 直连，不引入 Boot starter：仅 `REDIS_ENABLED=true` 时装配连接工厂与 `StringRedisTemplate`，并在 `/actuator/health` 加真实 PING 探测。Agent 事件通道使用 Stream 作为实时热通道（见「Agent 运行接口」）；会话与登录防爆破计数仍在单实例内存，迁移共享存储需另行设计。
 
 ## 日志与排查
 
-本地启动输出在 `.run/backend.log`、`.run/frontend.log`，每次启动覆盖；应用日志持续追加到 `.run/logs/loopcraft.log`：
-
-```bash
-tail -F .run/logs/loopcraft.log
-```
-
-直接运行 JAR 或 Maven 时，应用日志默认写入当前目录下 `logs/loopcraft.log`，可用 `LOG_DIR` 修改。单文件达到 10MB 或跨天后压缩滚动，归档保留 7 天，总量上限 200MB。`LOG_LEVEL_ROOT`、`LOG_LEVEL_APP` 默认 INFO。
-
-请求通过 `X-Trace-Id` 响应头返回追踪 ID，日志通过 `traceId` 关联。可传入 1–64 位字母、数字、点、下划线或短横线的同名请求头，否则生成 UUID。默认不记录模型内容；测试 Profile 仅输出控制台。
+本地启动输出在 `.run/backend.log`、`.run/frontend.log`（每次覆盖），应用日志追加至 `.run/logs/loopcraft.log`（10MB/跨天滚动压缩，保留 7 天，上限 200MB）。请求经 `X-Trace-Id` 响应头返回追踪 ID 并在日志中关联；默认不记录模型内容。
 
 ## 检查与 Git hooks
-
-从仓库根目录运行：
 
 ```bash
 ./scripts/check.sh repo         # 内容检查和仓库脚本测试
 ./scripts/check.sh backend      # 后端测试与 JAR 打包，不请求真实模型
 ./scripts/check.sh frontend     # 格式、lint、类型检查与 Next.js 构建
-./scripts/check.sh all          # 上述全部，不启动数据库
-./scripts/check.sh integration  # 临时 PostgreSQL，验证数据库相关行为
+./scripts/check.sh all          # 上述全部
+./scripts/check.sh integration  # 一次性 PostgreSQL，验证数据库相关行为
 ```
 
-`./scripts/dev.sh test <范围>` 使用同一实现。测试不加载 `.env`，并清除继承的业务凭证、JVM 配置注入及日志路径覆盖。集成测试使用独立随机端口和临时存储，成功、失败或中断后清理容器，不复用业务数据库；强制 SIGKILL 或宿主宕机后需检查 `loopcraft-test-*` 残留。
-
-首次下载依赖和拉取镜像需要网络，缓存就绪后无需外部业务服务。受限环境可设置 `MAVEN_REPO_LOCAL=/tmp/loopcraft-m2` 使用可写 Maven 缓存。CI 独立执行常规检查和 PostgreSQL 集成测试。
-
-克隆后启用原生 Git hooks：
+`./scripts/dev.sh test <范围>` 同一实现；测试不加载 `.env` 并清除继承的业务凭证。克隆后启用原生 hooks：
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-`pre-commit` 检查暂存内容的空白、常见凭证格式及前端暂存快照的格式和 lint；`pre-push` 检查当前工作区前端并构建。Hooks 不自动修复、暂存或提交；CI 再检查实际推送版本。内容检查覆盖未跟踪且未忽略的文件，但不替代完整密钥扫描。
+`pre-commit` 检查暂存内容与前端暂存快照；`pre-push` 执行当前工作区前端完整检查。Hooks 不自动修复或提交，CI 独立检查检出版本。

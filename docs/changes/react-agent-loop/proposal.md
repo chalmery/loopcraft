@@ -1,6 +1,6 @@
 # ReAct Agent 主流程：Harness 源码调研与 LoopCraft 能力取舍
 
-状态：**关键决策已拍板（2026-10-25），实施进行中（核心循环），未提交**
+状态：**核心循环已实现并提交；外围通道（受理 + SSE + Redis Stream + 运行持久化）已实现，待用户确认提交**
 
 调研日期：2026-10-18；2026-10-25 按当前代码对齐起点与模型接入方式，拍板第 12 节全部决策，同日多次修订：D6/D12 改为 Skill 只读工具；交互形态几经讨论（同步 → SSE 异步任务 + Redis Stream）后**范围收缩为核心与外围两块**——首版只做核心循环能力 + 同步最小接口（D2 回同步），SSE、Redis Stream、会话、消息持久化、OpenAPI 归入外围后续设计（见第 10 节）。
 
@@ -175,7 +175,7 @@
 
 ### 7.1 对外行为和责任边界
 
-用户向 `POST /api/tenants/{tenantId}/agent/chat` 提交 `templateId` 与 `message`（D14，路径对齐仓库租户资源约定），所有租户成员可发起。服务端同步完成成员资格、模板与模型链路校验后执行一次独立 run 并阻塞至终态：成功返回 `{answer, iterations, toolCalls}`，失败按 D11 映射状态码。run 不落库（D7），Agent 通过 `RunListener` 发布轮次级事件（iteration/tool 开始与结束、终态），首版事件仅留在进程内供测试观察，外围通道（SSE 等）后续接入时消费同一接口。
+用户向 `POST /api/tenants/{tenantId}/agent/chat` 提交 `templateId` 与 `message`（D14，路径对齐仓库租户资源约定），所有租户成员可发起。服务端同步完成成员资格、模板与模型链路校验后受理并返回 `202 {runId}`；循环在后台执行，事件经双层通道推送：先落 `lc_agent_run_event`（真相源与重放兜底），再 XADD Redis Stream（实时热通道，终态后短时保留）。前端通过 `GET /runs/{runId}/events` 以 SSE 订阅：按 `Last-Event-ID`（事件序号）先重放数据库事件，再接热通道实时推送；连接断开不取消任务，重连从断点续传；热通道缺失（故障或过期）时按序号轮询数据库兜底。Redis 未启用时受理返回 503。运行记录与终态落 `lc_agent_run`。
 
 建议初期只形成以下职责，不为了层次创建转发类：
 
@@ -307,7 +307,7 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 
 ### 9.5 HTTP 与可观察性
 
-建议保持同步接口：chat 阻塞至终态后返回 `{answer, iterations, toolCalls}`，不向成功 JSON 强塞完整轨迹。失败使用现有 ApiResponse/ProblemDetail 机制，已按 D11 确认：模型协议/模型服务错误 502，预算耗尽 422，超时 504。模板链路语义见 7.1：模板不存在或不属于当前租户 404；模板停用、引用的模型或来源被禁用、已删除 503，不静默回退。RunListener 事件接口保留在进程内，外围通道接入时消费。
+chat 受理返回 `202 {runId}`；SSE 事件集为 run_started / iteration_started / tool_called / tool_finished / run_finished（成功终态带 answer 与计数，失败带 status 与 reason），事件不含工具参数与结果内容。受理失败映射：模板不存在或跨租户 404，模板停用、模型或来源不可用、Redis 未启用 503。运行终态不再走同步 HTTP：状态与结果经事件流和 `lc_agent_run` 记录交付。
 
 诊断至少区分“模型提出”“通过校验”“已开始”“成功/失败/未执行”，保留调用 id、工具名、耗时和计数即可。默认不记录用户全文、模型思维内容、工具参数或完整结果。模型结束、工具结束和整个 run 结束分别统计，不把它们混成一个成功标记。
 
@@ -323,7 +323,8 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 | Skill 只读工具（list_skills / read_skill） | 纳入 | 业务与写操作工具由实际场景确定；写技能需另行设计授权与幂等 |
 | 模板 Skill 关联（TemplateSkill） | 纳入：作为只读工具的绑定与版本来源 | 更丰富的技能检索、提示词注入形态按需求单独设计 |
 | 模板压缩字段（contextBudgetTokens、summaryModelId、keepRecentMessages） | 首版不消费，仅存储 | 多轮会话与压缩需求落地后启用（D13） |
-| 外围通道：SSE + Redis Stream、会话、消息持久化、OpenAPI | 暂缓（方向已明确：受理+订阅两接口、轮次级事件、Stream 热通道 + PG 持久化兜底、session 多轮容器、全量消息历史落库、开放 API；待核心循环验收后按外围通道需求单独设计） | 核心与外围一起做会显著扩大首版范围，且通道选型依赖真实使用形态 |
+| 受理 + SSE 订阅、Redis Stream 热通道、运行与事件持久化 | 已实现（lc_agent_run / lc_agent_run_event 双层通道；断线按序号重放，热通道缺失轮询兜底） | —— |
+| 会话容器、全量消息历史、OpenAPI | 暂缓（session 多轮、lc_agent_run_message、开放 API 待使用形态明确后单独设计） | 多轮续跑需要历史组装与裁剪；OpenAPI 需要独立认证体系 |
 | 用户插话、follow-up 队列 | 暂缓 | 需要长任务中途调整指令时 |
 | 业务写工具、审批与沙箱 | 暂缓 | 确定写操作场景后，一并设计授权、幂等和执行不确定状态 |
 | 自动重试、续写、模型降级 | 暂缓 | 有真实失败样本，能定义可安全恢复的边界时 |
@@ -348,7 +349,8 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 - [ ] 两个并发请求的历史、预算和取消状态互不影响；默认诊断和 HTTP 错误不泄露提示词、参数、凭证或异常原文。（并发隔离已覆盖；HTTP 泄露面待接口测试补充）
 - [ ] 模板不存在或跨租户引用返回 404；引用的模型或来源被禁用、删除时运行明确失败（503），不静默回退其他模型；模板 `maxIterations` 为 0 或 `timeoutMinutes` 为 0 被拒绝。（实现已落，接口级测试待补）
 - [ ] 模板压缩字段（contextBudgetTokens、summaryModelId、keepRecentMessages）不参与首版运行。（实现未读取，负向断言用例待补）
-- [ ] HTTP 成功结构及各失败类型的状态码与最终拍板一致。（映射已实现，接口测试待补）
+- [ ] chat 受理返回 202 与 runId；SSE 按 7.1 事件集推送且不包含工具参数与结果内容；Last-Event-ID 重连从断点续传；连接断开任务继续执行至终态；热通道缺失时轮询数据库兜底；runId 跨租户或不存在 404；Redis 未启用受理 503。（实现已落，接口级测试待补）
+- [ ] HTTP 成功结构及各失败类型的状态码与最终拍板一致。（受理映射已实现，接口测试待补）
 
 测试分为假 ChatModel/假工具的确定性单元测试（skill 工具用预置技能数据与对象存储桩，不依赖真实 RustFS），以及本地 HTTP provider 桩的适配器测试。后者专门覆盖工具 schema 出站、tool_calls/finish reason 入站、消息回放和取消/超时行为。不请求真实模型，不用真实凭证。
 
@@ -374,7 +376,7 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 | D12 | Skill 在首版循环的角色 | 以只读工具消费：list_skills 查看模板绑定技能，read_skill(slug) 读绑定版本文档（同日修订，原为不消费） | 注入提示词不产生工具调用，验证不了工具链路；写技能语义需另行设计授权与幂等 |
 | D13 | 模板压缩字段的消费范围 | 首版仅读 modelId、systemPrompt、temperature、maxIterations、timeoutMinutes | 全部消费需先实现会话历史与压缩逻辑 |
 | D14 | 运行入口与模板的关系 | chat 请求携带 templateId，模型、提示词、预算均取自模板；链路校验失败明确失败 | 无模板入口与已落地的模板管理脱节，后续需迁移接口 |
-| D15 | 外围通道（推迟，方向已确认） | SSE 受理+订阅两接口、轮次级事件、Redis Stream 热通道 + PG 事件/消息持久化兜底、session 多轮会话、全量消息历史、开放 API；核心循环验收后按需启用 | 多服务消费与 OpenAPI 需要这些能力，但首版与核心一起做会显著扩大范围 |
+| D15 | 外围通道 | 已实现：受理+订阅两接口、轮次级事件、Redis Stream 热通道 + lc_agent_run/event 持久化兜底、断线按序号重放；会话容器、全量消息历史、OpenAPI 仍暂缓（实现于 2026-10-25 第三轮，基于用户引入的 Redis 装配） | 多服务消费与 OpenAPI 需要这些能力 |
 
 ## 13. 实施步骤与完成记录
 
@@ -389,7 +391,8 @@ Spring AI 2.0.1 已在本机 sources.jar 核实：
 - 2026-10-18 调研轮：源码调研与提案初稿。未修改实现；已执行 `./scripts/check.sh repo` 通过（16 项仓库脚本测试通过）。该检查不等于 ReAct 流程已实现或通过测试，开发验收保持未勾选。
 - 2026-10-25 对齐轮：按当前代码更新第 2 节起点与模型接入方式（按租户动态构建 ChatModel），确认 Skill 与模板字段消费范围，拍板 D1–D14。未修改后端实现与测试；已执行 `./scripts/check.sh repo` 通过（33 项仓库脚本测试通过），该检查不涉及业务构建或测试。
 - 2026-10-25 修订轮：D6/D12 调整——首批工具改为 list_skills / read_skill 只读 Skill 工具，read_skill 读模板绑定版本，移除 add/multiply；第 1、2、4、8、9、10、11、12、13 节同步更新。未修改后端实现与测试；已执行 `./scripts/check.sh repo` 通过（33 项仓库脚本测试通过），该检查不涉及业务构建或测试。
-- 2026-10-25 实施轮（核心循环，未提交）：实现 `agent` 包（AgentController 同步接口、AgentChatService 链路编排、Agent 显式循环、AgentErrors 映射、AgentProperties 预算配置）、`tool/ToolExecutor`、`llm/ChatModelFactory`（OPENAI_COMPATIBLE 构建，ANTHROPIC_COMPATIBLE 明确 503 待接入）；SkillTools 结果上限接入全局配置；chat 接口按租户路径与全员权限实现。假 ChatModel 确定性测试 24 项覆盖第 11 节循环类用例；`./scripts/check.sh backend` 通过（76 项）。HTTP 链路校验、Skill 工具行为、结果截断与适配器桩测试待补；Anthropic 协议运行时与真实模型联调未做。
+- 2026-10-25 实施轮三（外围通道，待提交）：chat 切换为受理接口（202 + runId）与 SSE 订阅端点；新增 lc_agent_run / lc_agent_run_event（受理落 RUNNING、终态更新、事件追加）；RunEvents 双层通道先落库再 XADD（MAXLEN+终态 TTL），Redis 失败不影响事件完整性；订阅端先按 Last-Event-ID 重放数据库再接 XREAD 实时，热通道缺失按序号轮询数据库兜底；Redis 未启用时受理 503。Agent 核心循环未改动（RunListener 适配发布）。`./scripts/check.sh backend` 通过（81 项）；受理/SSE/通道的接口级与集成测试待补，真实 Redis + 模型联调未做。
+- 2026-10-25 实施轮一（核心循环，已提交 9cec2d4）：实现 `agent` 包（AgentController 同步接口、AgentChatService 链路编排、Agent 显式循环、AgentErrors 映射、AgentProperties 预算配置）、`tool/ToolExecutor`、`llm/ChatModelFactory`（OPENAI_COMPATIBLE 构建，ANTHROPIC_COMPATIBLE 明确 503 待接入）；SkillTools 结果上限接入全局配置；chat 接口按租户路径与全员权限实现。假 ChatModel 确定性测试 24 项覆盖第 11 节循环类用例；`./scripts/check.sh backend` 通过（76 项）。HTTP 链路校验、Skill 工具行为、结果截断与适配器桩测试待补；Anthropic 协议运行时与真实模型联调未做。
 
 ## 附录：源码定位
 

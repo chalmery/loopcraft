@@ -90,6 +90,22 @@ erDiagram
         bigint actor_id "无外键，请求发起人"
         varchar request_id "幂等键，租户+人+请求唯一"
     }
+    lc_agent_run {
+        varchar id PK "UUID"
+        bigint tenant_id FK
+        bigint template_id "无外键，运行时的模板快照"
+        varchar status "RUNNING 或六种终态"
+        varchar failure "FAILED 原因码"
+        text answer "仅 COMPLETED 非空"
+        integer iterations
+        integer tool_calls
+    }
+    lc_agent_run_event {
+        bigint id PK "事件序号，同时作 SSE 事件 ID"
+        varchar run_id FK "ON DELETE CASCADE"
+        varchar type "run_started/iteration/tool_* /run_finished"
+        text payload "JSON，不含工具参数与结果内容"
+    }
 
     lc_user ||--o{ lc_tenant_member : "加入"
     lc_tenant ||--o{ lc_tenant_member : "成员"
@@ -104,6 +120,8 @@ erDiagram
     lc_skill ||--o{ lc_template_skill : "被绑定 RESTRICT"
     lc_skill_version ||--o{ lc_template_skill : "锁定版本 RESTRICT"
     lc_tenant ||--o{ lc_template_request : "幂等请求记录"
+    lc_tenant ||--o{ lc_agent_run : "Agent 运行"
+    lc_agent_run ||--o{ lc_agent_run_event : "事件流 CASCADE"
 ```
 
 ## 表清单
@@ -122,9 +140,11 @@ erDiagram
 | template | lc_agent_template | Agent 运行模板（模型、提示词、预算） | `backend/sql/template/create_agent_template.sql` |
 | template | lc_template_skill | 模板与技能版本的绑定 | `backend/sql/template/create_template_skill.sql` |
 | template | lc_template_request | 模板保存幂等请求记录 | `backend/sql/template/create_template_request.sql` |
+| agent | lc_agent_run | Agent 运行记录与终态结果；Redis Stream 仅作实时热通道 | `backend/sql/agent/create_agent_run.sql` |
+| agent | lc_agent_run_event | 运行事件流，SSE 断线重放的兜底数据源 | `backend/sql/agent/create_agent_run_event.sql` |
 
 ## 初始化顺序
 
-按外键依赖：identity（lc_user → lc_tenant → lc_tenant_member）→ llm（lc_llm_source → lc_llm_model）→ skill（lc_skill → lc_skill_version / lc_skill_tag / lc_skill_object_upload）→ template（lc_agent_template → lc_template_skill / lc_template_request）。各模块内顺序见 `backend/sql/<模块>/README.md`。
+按外键依赖：identity（lc_user → lc_tenant → lc_tenant_member）→ llm（lc_llm_source → lc_llm_model）→ skill（lc_skill → lc_skill_version / lc_skill_tag / lc_skill_object_upload）→ template（lc_agent_template → lc_template_skill / lc_template_request）→ agent（lc_agent_run → lc_agent_run_event）。各模块内顺序见 `backend/sql/<模块>/README.md`。
 
-Agent 运行（run、事件流）当前为内存态，不落库；后续如需运行记录持久化，另行设计并更新本文件。
+Agent 运行事件同时写入 lc_agent_run_event（真相源）与 Redis Stream（实时通道，终态后短时保留）；SSE 重放优先读 Stream，缺失或过期时以本表兜底。
